@@ -11,36 +11,12 @@ FaceDetector::FaceDetector() {
     faceColor = cv::Scalar(0, 255, 0);  // ������� ��� ���
     eyeColor = cv::Scalar(255, 0, 0);   // ����� ��� ����
 
-    // �������� ��������� ������� �� ������ ����
-    std::vector<std::string> facePaths = {
-        "models/haarcascade_frontalface_default.xml",
-    };
-
-    std::vector<std::string> profilePaths = {
-        "models/haarcascade_profileface.xml",
-    };
-
-    bool faceLoaded = false;
-    for (const auto& path : facePaths) {
-        std::cout << "������ ��������� face cascade ��: " << path << std::endl;
-        if (faceCascade.load(path)) {
-            std::cout << "Face cascade �������� ��: " << path << std::endl;
-            faceLoaded = true;
-            break;
-        }
+    try {
+        profileFaceCascade.load(FACE_CASCADE_PROFILE);
+        faceCascade.load(FACE_CASCADE_FRONTAL);
     }
-
-    if (!faceLoaded) {
-        std::cerr << "��������: �� ������� ��������� ������ ��� ���!" << std::endl;
-        std::cerr << "��������� haarcascade_frontalface_default.xml � ����� models/" << std::endl;
-    }
-
-    // ���������� ������ - ������������
-    for (const auto& path : profilePaths) {
-        if (profileFaceCascade.load(path)) {
-            std::cout << "Profile face cascade �������� ��: " << path << std::endl;
-            break;
-        }
+    catch (...) {
+        std::cerr << "Cant Load Cascade\n";
     }
 }
 

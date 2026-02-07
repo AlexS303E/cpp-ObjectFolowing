@@ -3,6 +3,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/objdetect.hpp>
 #include <vector>
+#include "global.h"
 
 class FaceDetector {
 public:

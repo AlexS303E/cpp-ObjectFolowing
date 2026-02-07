@@ -1,4 +1,5 @@
 ﻿#include "ObjectTracker.h"
+#include "global.h"
 #include <iostream>
 #include <limits>
 #include <algorithm>
@@ -18,55 +19,13 @@ ObjectTracker::~ObjectTracker() {
 }
 
 bool ObjectTracker::loadFaceCascade() {
-    // ���� ��� ������ ������� (������������ ���������� ������������ �����)
-    std::vector<std::string> possiblePaths = {
-        "haarcascade_frontalface_default.xml",
-        "./haarcascade_frontalface_default.xml",
-        "../haarcascade_frontalface_default.xml",
-        "../../haarcascade_frontalface_default.xml",
-        "models/haarcascade_frontalface_default.xml",
-        "./models/haarcascade_frontalface_default.xml",
-        "../models/haarcascade_frontalface_default.xml",
-        "../../models/haarcascade_frontalface_default.xml",
-        "haarcascades/haarcascade_frontalface_default.xml",
-        "./haarcascades/haarcascade_frontalface_default.xml",
-        "../haarcascades/haarcascade_frontalface_default.xml",
-        "../../haarcascades/haarcascade_frontalface_default.xml",
-        "data/haarcascade_frontalface_default.xml",
-        "C:/opencv/build/etc/haarcascades/haarcascade_frontalface_default.xml",
-        "/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml",
-        "/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml"
-    };
-
-    // �������� ��������� ������
-    for (const auto& path : possiblePaths) {
-        std::cout << "������ ��������� ������ ��: " << path << std::endl;
-        if (faceCascade.load(path)) {
-            std::cout << "������ ����� ������� �������� ��: " << path << std::endl;
-            return true;
-        }
-    }
-
-    // ���� �� �����, ������� samples::findFile
     try {
-        std::string cascadePath = cv::samples::findFile("haarcascade_frontalface_default.xml");
-        std::cout << "������ ��������� ����� samples::findFile: " << cascadePath << std::endl;
-        if (faceCascade.load(cascadePath)) {
-            std::cout << "������ ����� �������� ����� samples::findFile: " << cascadePath << std::endl;
-            return true;
-        }
+        faceCascade.load(FACE_CASCADE_FRONTAL);
+        return true;
     }
-    catch (const cv::Exception& e) {
-        std::cerr << "������ samples::findFile: " << e.what() << std::endl;
+    catch (...) {
+        return false;
     }
-
-    std::cerr << "������: �� ������� ��������� ������ �����!" << std::endl;
-    std::cerr << "���� haarcascade_frontalface_default.xml ������ ���������� � ����� �� ��������� ����������:" << std::endl;
-    std::cerr << "1. � ��� �� ����������, ��� � ����������� ����" << std::endl;
-    std::cerr << "2. � ������������� models/" << std::endl;
-    std::cerr << "3. � ������������� haarcascades/" << std::endl;
-
-    return false;
 }
 
 void ObjectTracker::setFaceTrackingMode(bool enable) {
