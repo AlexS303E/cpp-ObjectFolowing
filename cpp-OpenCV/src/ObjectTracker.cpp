@@ -664,7 +664,7 @@ void ObjectTracker::drawTrackingInfo(cv::Mat& frame) const {
             // Рисуем ЗЕЛЕНУЮ ОКРУЖНОСТЬ в предсказанной позиции через 1 секунду
             int circleRadius = 26;
             // Окружность (полый круг)
-            circle(frame, predictedPosition, circleRadius, Scalar(0, 255, 0), 2);
+            circle(frame, predictedPosition, circleRadius, Scalar(0, 255, 0), 4);
 
             // Определяем, находится ли круг внутри квадрата
             bool circleInsideRect = predictedPosition.x >= trackedObject.boundingBox.x &&
@@ -716,8 +716,8 @@ void ObjectTracker::drawTrackingInfo(cv::Mat& frame) const {
 
             // Подпись рядом с кругом
             cv::putText(frame, "prediction",
-                Point(predictedPosition.x + 15, predictedPosition.y - 10),
-                FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 1);
+                Point(predictedPosition.x + 25, predictedPosition.y - 15),
+                FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
         }
     }
     else {
@@ -810,9 +810,9 @@ void ObjectTracker::drawTrackingInfo(cv::Mat& frame) const {
         static_cast<float>(frame.rows) / 2.0f);
 
     // Рисуем ПЛЮС (+) в центре кадра
-    int crossSize = 15;
+    int crossSize = 20;
     int lineThickness = 2;
-    Scalar crossColor(0, 255, 255); // Желтый цвет
+    Scalar crossColor(0, 255, 0); // Зеленый цвет
 
     // Горизонтальная линия плюса
     line(frame,

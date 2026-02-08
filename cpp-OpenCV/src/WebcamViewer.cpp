@@ -3,8 +3,6 @@
 #include <chrono>
 #include <iomanip>
 
-
-
 using namespace cv;
 using namespace std;
 
@@ -35,7 +33,7 @@ bool WebcamViewer::initialize(int cameraIndex) {
     }
 
     // Устанавливаем стандартные параметры
-    setResolution(1280, 720);
+    setResolution(1980, 1080);
     setFPS(30);
 
     // Отключаем автофокус для скорости

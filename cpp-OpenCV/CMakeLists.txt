@@ -45,6 +45,8 @@ set(HEADER_FILES
     src/ObjectTracker.h
     src/FaceDetector.h
     src/yolo.h
+    src/Targets/ObjInfo.h
+    src/Targets/Target.h
 )
 
 # === Создание исполняемого файла ===

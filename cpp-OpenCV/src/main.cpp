@@ -306,7 +306,7 @@ int main() {
         bool useCombinedDetector = true;
         bool showOnlyEdges = false;
         bool objectTrackingEnabled = false;
-        bool faceTrackingMode = false;
+        bool faceTrackingMode = true;
 
         double cannyThresh1 = 50.0, cannyThresh2 = 150.0;
         double combinedThresh1 = 50.0, combinedThresh2 = 150.0;
@@ -314,6 +314,8 @@ int main() {
 
         // === Создание WebcamViewer ===
         WebcamViewer webcam;
+
+        objectTracker.setFaceTrackingMode(faceTrackingMode);
 
         if (!webcam.initialize(0)) {
             std::cerr << "Error: Could not open camera!" << std::endl;

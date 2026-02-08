@@ -8,8 +8,7 @@ FaceDetector::FaceDetector() {
     minSize = cv::Size(30, 30);
     maxSize = cv::Size(300, 300);
 
-    faceColor = cv::Scalar(0, 255, 0);  // ������� ��� ���
-    eyeColor = cv::Scalar(255, 0, 0);   // ����� ��� ����
+    faceColor = cv::Scalar(0, 255, 0);
 
     try {
         profileFaceCascade.load(FACE_CASCADE_PROFILE);
@@ -111,8 +110,6 @@ void FaceDetector::drawFaces(cv::Mat& frame, const std::vector<cv::Rect>& faces)
         cv::Rect leftEye(face.x + face.width / 4 - eyeWidth / 2, eyeY, eyeWidth, eyeHeight);
         cv::Rect rightEye(face.x + 3 * face.width / 4 - eyeWidth / 2, eyeY, eyeWidth, eyeHeight);
 
-        cv::rectangle(frame, leftEye, eyeColor, 1);
-        cv::rectangle(frame, rightEye, eyeColor, 1);
 
         // ������������ � ���������� ����������
         std::string info = "W: " + std::to_string(face.width) +

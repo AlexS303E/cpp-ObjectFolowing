@@ -33,5 +33,4 @@ private:
 
     // ����� ��� ���������
     cv::Scalar faceColor;
-    cv::Scalar eyeColor;
 };
