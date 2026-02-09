@@ -32,7 +32,6 @@ set(SOURCE_FILES
     src/main.cpp
     src/global.cpp
     src/WebcamViewer.cpp
-    src/BitGrid.cpp
     src/Trackers/ObjectTracker.cpp
     src/Trackers/FaceTracker.cpp
     src/Trackers/EdgeDetector.cpp
@@ -40,7 +39,6 @@ set(SOURCE_FILES
 
 set(HEADER_FILES
     src/WebcamViewer.h
-    src/BitGrid.h
     src/yolo.h
     src/Targets/ObjInfo.h
     src/Targets/Target.h
