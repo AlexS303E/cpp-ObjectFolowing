@@ -32,21 +32,21 @@ set(SOURCE_FILES
     src/main.cpp
     src/global.cpp
     src/WebcamViewer.cpp
-    src/EdgeDetector.cpp
     src/BitGrid.cpp
-    src/ObjectTracker.cpp
-    src/FaceDetector.cpp
+    src/Trackers/ObjectTracker.cpp
+    src/Trackers/FaceTracker.cpp
+    src/Trackers/EdgeDetector.cpp
 )
 
 set(HEADER_FILES
     src/WebcamViewer.h
-    src/EdgeDetector.h
     src/BitGrid.h
-    src/ObjectTracker.h
-    src/FaceDetector.h
     src/yolo.h
     src/Targets/ObjInfo.h
     src/Targets/Target.h
+    src/Trackers/EdgeDetector.h
+    src/Trackers/ObjectTracker.h
+    src/Trackers/FaceTracker.h
 )
 
 # === Создание исполняемого файла ===
