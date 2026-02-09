@@ -2,19 +2,18 @@
 #include <iostream>
 #include <iomanip>
 #include <chrono>
-#include "EdgeDetector.h"
-#include "ObjectTracker.h"
+#include "Trackers/EdgeDetector.h"
+#include "Trackers/TrackerManager.h"
 #include "WebcamViewer.h"
 
-// Функция для обработки кадра (сохранение оригинальной логики)
+// Функция для обработки кадра
 void processFrame(cv::Mat& frame,
     CannyEdgeDetector& cannyDetector,
     CombinedEdgeDetector& combinedDetector,
-    ObjectTracker& objectTracker,
+    TrackerManager& trackerManager,
     bool& useCombinedDetector,
     bool& showOnlyEdges,
-    bool& objectTrackingEnabled,
-    bool& faceTrackingMode,
+    bool& trackingEnabled,
     float fps) {
 
     cv::Mat displayFrame;
@@ -60,28 +59,32 @@ void processFrame(cv::Mat& frame,
         cv::Point(10, displayFrame.rows - 100), cv::FONT_HERSHEY_SIMPLEX,
         0.6, cv::Scalar(255, 200, 0), 2);
 
-    // Обработка трекинга объекта
-    if (objectTrackingEnabled) {
-        if (!objectTracker.isInitialized()) {
+    // Обработка трекинга
+    if (trackingEnabled) {
+        if (!trackerManager.isInitialized()) {
             // Инициализируем трекер
-            if (faceTrackingMode) {
+            if (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER) {
+                std::cout << "Initializing object tracker..." << std::endl;
+            }
+            else {
                 std::cout << "Initializing face tracker..." << std::endl;
             }
 
-            if (objectTracker.initialize(originalFrame)) {
-                std::cout << "Object tracker initialized successfully!" << std::endl;
+            if (trackerManager.initialize(originalFrame)) {
+                std::cout << (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER ?
+                    "Object" : "Face") << " tracker initialized successfully!" << std::endl;
             }
             else {
-                std::cout << "Failed to initialize object tracker!" << std::endl;
-                objectTrackingEnabled = false;
+                std::cout << "Failed to initialize tracker!" << std::endl;
+                trackingEnabled = false;
             }
         }
         else {
             // Обновляем трекер в реальном времени
-            bool trackingSuccess = objectTracker.update(originalFrame);
+            bool trackingSuccess = trackerManager.update(originalFrame);
 
             // Рисуем информацию о трекинге поверх всего
-            objectTracker.drawTrackingInfo(displayFrame);
+            trackerManager.drawTrackingInfo(displayFrame);
 
             // Отображаем статус трекинга
             std::string trackingStatus = trackingSuccess ? "ACTIVE" : "SEARCHING";
@@ -95,8 +98,9 @@ void processFrame(cv::Mat& frame,
 
     // Отображение информации о режиме
     std::string modeInfo = showOnlyEdges ? "[Edges Only]" : "[Overlay]";
-    if (objectTrackingEnabled) {
-        modeInfo += faceTrackingMode ? " [Face Tracking]" : " [Object Tracking]";
+    if (trackingEnabled) {
+        modeInfo += " [" + std::string(trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER ?
+            "Object Tracker" : "Face Tracker") + "]";
     }
 
     cv::putText(displayFrame, modeInfo, cv::Point(displayFrame.cols - 250, 60),
@@ -116,22 +120,23 @@ void processFrame(cv::Mat& frame,
         cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(200, 200, 200), 1);
     cv::putText(displayFrame, "[t] - Toggle Tracking", cv::Point(displayFrame.cols - 250, displayFrame.rows - 25),
         cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(200, 200, 200), 1);
-    cv::putText(displayFrame, "[f] - Face/Object Mode", cv::Point(displayFrame.cols - 250, displayFrame.rows - 45),
+    cv::putText(displayFrame, "[m] - Switch Tracker", cv::Point(displayFrame.cols - 250, displayFrame.rows - 45),
+        cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(200, 200, 200), 1);
+    cv::putText(displayFrame, "[f] - Face/Object Mode", cv::Point(displayFrame.cols - 250, displayFrame.rows - 65),
         cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(200, 200, 200), 1);
 
     // Копируем обработанный кадр назад
     frame = displayFrame;
 }
 
-// Функция для обработки клавиш (сохранение оригинальной логики)
+// Функция для обработки клавиш
 void processKey(int key,
     bool& useCombinedDetector,
     bool& showOnlyEdges,
-    bool& objectTrackingEnabled,
-    bool& faceTrackingMode,
+    bool& trackingEnabled,
+    TrackerManager& trackerManager,
     CannyEdgeDetector& cannyDetector,
     CombinedEdgeDetector& combinedDetector,
-    ObjectTracker& objectTracker,
     double& cannyThresh1, double& cannyThresh2,
     double& combinedThresh1, double& combinedThresh2,
     int& dilateSize, int& erodeSize,
@@ -155,47 +160,71 @@ void processKey(int key,
             << std::endl;
     }
 
-    // Включение/выключение трекинга объекта
+    // Включение/выключение трекинга
     if (key == 't' || key == 'T') {
-        objectTrackingEnabled = !objectTrackingEnabled;
-        if (objectTrackingEnabled) {
-            std::cout << "Object tracking ENABLED" << std::endl;
-            if (faceTrackingMode) {
-                std::cout << "Mode: Face Tracking" << std::endl;
-            }
+        trackingEnabled = !trackingEnabled;
+        if (trackingEnabled) {
+            std::cout << "Tracking ENABLED" << std::endl;
+            std::cout << "Tracker type: "
+                << (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER ?
+                    "Object Tracker" : "Face Tracker")
+                << std::endl;
         }
         else {
-            std::cout << "Object tracking DISABLED" << std::endl;
-            objectTracker.reset();
+            std::cout << "Tracking DISABLED" << std::endl;
+            trackerManager.reset();
         }
     }
 
-    // Переключение режима лица/объекта
-    if (key == 'f' || key == 'F') {
-        faceTrackingMode = !faceTrackingMode;
-        objectTracker.setFaceTrackingMode(faceTrackingMode);
+    // Переключение трекера (между ObjectTracker и FaceTracker)
+    if (key == 'm' || key == 'M') {
+        if (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER) {
+            trackerManager.switchTracker(TrackerManager::TrackerType::FACE_TRACKER);
+            std::cout << "Switched to Face Tracker" << std::endl;
+        }
+        else {
+            trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
+            std::cout << "Switched to Object Tracker" << std::endl;
+        }
 
-        if (faceTrackingMode) {
-            std::cout << "Face tracking mode ENABLED" << std::endl;
-            if (!objectTracker.isFaceTrackingMode()) {
-                std::cout << "WARNING: Face cascade not loaded! Check haarcascade_frontalface_default.xml" << std::endl;
-                faceTrackingMode = false;
+        // Если трекинг был включен, сбрасываем и переинициализируем
+        if (trackingEnabled) {
+            trackerManager.reset();
+            std::cout << "Tracker reset for new type" << std::endl;
+        }
+    }
+
+    // Переключение режима лица/объекта (только для ObjectTracker)
+    if (key == 'f' || key == 'F') {
+        if (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER) {
+            bool currentFaceMode = trackerManager.isFaceTrackingMode();
+            trackerManager.setFaceTrackingMode(!currentFaceMode);
+
+            if (!currentFaceMode) {
+                std::cout << "Face tracking mode ENABLED in ObjectTracker" << std::endl;
+                if (!trackerManager.isFaceTrackingMode()) {
+                    std::cout << "WARNING: Face cascade not loaded! Check haarcascade_frontalface_default.xml" << std::endl;
+                    trackerManager.setFaceTrackingMode(false);
+                }
+            }
+            else {
+                std::cout << "Object tracking mode ENABLED in ObjectTracker" << std::endl;
+            }
+
+            if (trackingEnabled) {
+                trackerManager.reset();
+                std::cout << "Tracker reset for new mode" << std::endl;
             }
         }
         else {
-            std::cout << "Object tracking mode ENABLED" << std::endl;
-        }
-
-        if (objectTrackingEnabled) {
-            objectTracker.reset();
-            std::cout << "Tracker reset for new mode" << std::endl;
+            std::cout << "Face/Object mode switching is only available in Object Tracker mode" << std::endl;
         }
     }
 
     // Сброс трекера
     if (key == '0') {
-        objectTracker.reset();
-        std::cout << "Object tracker reset" << std::endl;
+        trackerManager.reset();
+        std::cout << "Tracker reset" << std::endl;
     }
 
     // Сброс параметров детектора
@@ -279,7 +308,7 @@ int main() {
 
     try {
         std::cout << "\n=============================================\n";
-        std::cout << "       Edge Detection with Object Tracking\n";
+        std::cout << "       Edge Detection with Tracker Manager\n";
         std::cout << "       (Using WebcamViewer)\n";
         std::cout << "=============================================\n";
         std::cout << "Controls:\n";
@@ -288,9 +317,10 @@ int main() {
         std::cout << "  [c/C] - Toggle display mode (overlay/edges only)\n";
         std::cout << "  [d/D] - Increase/decrease dilation (Combined)\n";
         std::cout << "  [e/E] - Increase/decrease erosion (Combined)\n";
-        std::cout << "  [t/T] - Enable/disable object tracking\n";
-        std::cout << "  [f/F] - Toggle face tracking mode\n";
-        std::cout << "  [0]   - Reset object tracker\n";
+        std::cout << "  [t/T] - Enable/disable tracking\n";
+        std::cout << "  [m/M] - Switch between Object and Face trackers\n";
+        std::cout << "  [f/F] - Toggle face/object mode (in Object Tracker)\n";
+        std::cout << "  [0]   - Reset tracker\n";
         std::cout << "  [r/R] - Reset detector parameters\n";
         std::cout << "  [s/S] - Save current frame\n";
         std::cout << "  [SPACE] - Pause/Resume\n";
@@ -300,13 +330,14 @@ int main() {
         // === Создание детекторов ===
         CannyEdgeDetector cannyDetector(50.0, 150.0);
         CombinedEdgeDetector combinedDetector(50.0, 150.0, 2, 2);
-        ObjectTracker objectTracker;
+
+        // === Создание TrackerManager ===
+        TrackerManager trackerManager;
 
         // Параметры по умолчанию
         bool useCombinedDetector = true;
         bool showOnlyEdges = false;
-        bool objectTrackingEnabled = false;
-        bool faceTrackingMode = true;
+        bool trackingEnabled = false;
 
         double cannyThresh1 = 50.0, cannyThresh2 = 150.0;
         double combinedThresh1 = 50.0, combinedThresh2 = 150.0;
@@ -314,8 +345,6 @@ int main() {
 
         // === Создание WebcamViewer ===
         WebcamViewer webcam;
-
-        objectTracker.setFaceTrackingMode(faceTrackingMode);
 
         if (!webcam.initialize(0)) {
             std::cerr << "Error: Could not open camera!" << std::endl;
@@ -340,16 +369,15 @@ int main() {
                 lastTime = currentTime;
             }
 
-            // Обработка кадра с сохранением всей оригинальной логики
-            processFrame(frame, cannyDetector, combinedDetector, objectTracker,
-                useCombinedDetector, showOnlyEdges, objectTrackingEnabled,
-                faceTrackingMode, currentFPS);
+            // Обработка кадра
+            processFrame(frame, cannyDetector, combinedDetector, trackerManager,
+                useCombinedDetector, showOnlyEdges, trackingEnabled, currentFPS);
             };
 
         // === Функция обработки клавиш ===
         auto keyProcessor = [&](int key) {
-            processKey(key, useCombinedDetector, showOnlyEdges, objectTrackingEnabled,
-                faceTrackingMode, cannyDetector, combinedDetector, objectTracker,
+            processKey(key, useCombinedDetector, showOnlyEdges, trackingEnabled,
+                trackerManager, cannyDetector, combinedDetector,
                 cannyThresh1, cannyThresh2, combinedThresh1, combinedThresh2,
                 dilateSize, erodeSize, webcam);
             };

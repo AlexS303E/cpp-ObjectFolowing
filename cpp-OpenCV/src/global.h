@@ -5,7 +5,7 @@
 
 namespace fs = std::filesystem;
 
-// РћР±СЉСЏРІР»РµРЅРёСЏ (extern) РіР»РѕР±Р°Р»СЊРЅС‹С… РїРµСЂРµРјРµРЅРЅС‹С…
+// Объявления (extern) глобальных переменных
 extern std::string YOLOv3CONF;
 extern std::string YOLOv3WEIGHT;
 extern std::string YOLOv8n;
@@ -20,6 +20,6 @@ extern std::string FACE_CASCADE_PROFILE;
 #define M_PI 3.14159265358979323846
 #endif
 
-// РћР±СЉСЏРІР»РµРЅРёСЏ С„СѓРЅРєС†РёР№
+// Объявления функций
 bool fileExists(const std::string& path);
 std::string getAbsolutePath(const std::string& relativePath);
