@@ -35,16 +35,18 @@ set(SOURCE_FILES
     src/Trackers/ObjectTracker.cpp
     src/Trackers/FaceTracker.cpp
     src/Trackers/EdgeDetector.cpp
+    src/Trackers/TrackerManager.cpp
 )
 
 set(HEADER_FILES
+    src/global.h
     src/WebcamViewer.h
-    src/yolo.h
     src/Targets/ObjInfo.h
     src/Targets/Target.h
-    src/Trackers/EdgeDetector.h
     src/Trackers/ObjectTracker.h
     src/Trackers/FaceTracker.h
+    src/Trackers/EdgeDetector.h
+    src/Trackers/TrackerManager.h
 )
 
 # === Создание исполняемого файла ===

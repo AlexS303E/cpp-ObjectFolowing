@@ -22,6 +22,9 @@ void TrackerManager::switchTracker(TrackerType type) {
     if (m_objectTracker) {
         m_objectTracker->reset();
     }
+    if (m_faceTracker) {
+        m_faceTracker->reset();
+    }
 
     std::cout << "Switched to "
         << (type == TrackerType::OBJECT_TRACKER ? "Object Tracker" : "Face Tracker")
@@ -37,9 +40,8 @@ bool TrackerManager::initialize(const cv::Mat& frame) {
         return m_objectTracker->initialize(frame);
     }
     else {
-        // ƒл€ FaceTracker используем собственную логику инициализации
-        std::vector<cv::Rect> faces = m_faceTracker->detectFaces(frame);
-        return !faces.empty();
+        // »спользуем публичный метод инициализации FaceTracker
+        return m_faceTracker->initialize(frame);
     }
 }
 
@@ -48,10 +50,8 @@ bool TrackerManager::update(const cv::Mat& frame) {
         return m_objectTracker->update(frame);
     }
     else {
-        // FaceTracker не имеет метода update, поэтому всегда возвращаем true
-        // при условии, что лица обнаружены
-        std::vector<cv::Rect> faces = m_faceTracker->detectFaces(frame);
-        return !faces.empty();
+        // »спользуем публичный метод обновлени€ FaceTracker
+        return m_faceTracker->update(frame);
     }
 }
 
@@ -60,12 +60,8 @@ void TrackerManager::drawTrackingInfo(cv::Mat& frame) const {
         m_objectTracker->drawTrackingInfo(frame);
     }
     else {
-        std::vector<cv::Rect> faces = m_faceTracker->detectFaces(frame);
-        m_faceTracker->drawFaces(frame, faces);
-
-        // ƒобавл€ем информацию о режиме
-        cv::putText(frame, "Face Tracker Mode", cv::Point(10, 30),
-            cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 255), 2);
+        // »спользуем публичный метод отрисовки FaceTracker
+        m_faceTracker->drawTrackingInfo(frame);
     }
 }
 
@@ -74,9 +70,8 @@ void TrackerManager::reset() {
         m_objectTracker->reset();
     }
     else {
-        // FaceTracker не имеет метода reset, очищаем обнаруженные лица
-        // путем повторного создани€ объекта
-        m_faceTracker = std::make_unique<FaceTracker>();
+        // »спользуем публичный метод сброса FaceTracker
+        m_faceTracker->reset();
     }
 }
 
@@ -84,9 +79,10 @@ bool TrackerManager::isInitialized() const {
     if (m_currentType == TrackerType::OBJECT_TRACKER) {
         return m_objectTracker->isInitialized();
     }
-
-    // FaceTracker всегда считаетс€ инициализированным
-    return true;
+    else {
+        // »спользуем публичный метод проверки инициализации FaceTracker
+        return m_faceTracker->isInitialized();
+    }
 }
 
 ObjectTracker* TrackerManager::getObjectTracker() {

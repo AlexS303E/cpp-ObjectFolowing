@@ -1,5 +1,5 @@
 ﻿#include "ObjectTracker.h"
-#include "global.h"
+#include "./global.h"
 #include <iostream>
 #include <limits>
 #include <algorithm>
