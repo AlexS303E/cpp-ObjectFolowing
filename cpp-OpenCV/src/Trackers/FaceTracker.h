@@ -16,20 +16,30 @@ enum class TrackerMode {
 
 // Структура для отслеживаемого лица с прогнозированием
 struct TrackedFace {
-    cv::Rect boundingBox;          // Прямоугольник лица
-    cv::Point2f center;            // Текущий центр
-    cv::Point2f velocity;          // Скорость (пикселей в секунду)
-    cv::Point2f predictedCenter;   // Прогнозируемый центр через 1 секунду
-    int id;                        // Уникальный идентификатор
-    int age;                       // Возраст в кадрах
-    bool lost;                     // Флаг потери лица
-    std::deque<cv::Point2f> positionHistory;  // История позиций для сглаживания
+    cv::Rect boundingBox;
+    cv::Point2f center;
+    cv::Point2f velocity;
+    cv::Point2f predictedCenter;
+    cv::Point2f predicted = { 0,0 };
+    int id;
+    int age;
+    bool lost;
+    std::deque<cv::Point2f> positionHistory;
 
-    TrackedFace() : id(0), age(0), lost(false) {
+    // Для расчета скорости (как в ObjectTracker)
+    cv::Point2f previousPosition;
+    std::chrono::steady_clock::time_point previousTime;
+    bool hasPreviousPosition;
+
+    int lostFrames = 0;
+    bool matched = false;
+
+    TrackedFace() : id(0), age(0), lost(false), hasPreviousPosition(false) {
         boundingBox = cv::Rect(0, 0, 0, 0);
         center = cv::Point2f(0, 0);
         velocity = cv::Point2f(0, 0);
         predictedCenter = cv::Point2f(0, 0);
+        previousPosition = cv::Point2f(0, 0);
     }
 };
 
@@ -81,6 +91,7 @@ private:
 
     // Для расчета времени между кадрами
     std::chrono::steady_clock::time_point previousTime;
+    std::chrono::high_resolution_clock::time_point lastUpdateTime;
     bool hasPreviousTime;
 
     // Цвета для отрисовки
@@ -99,6 +110,8 @@ private:
     const int PREDICTION_THICKNESS = 3;
     const int LINE_THICKNESS = 2;
 
+    int maxLostFrames = 15;
+
     // Приватные методы
     std::vector<cv::Rect> detectFaces(const cv::Mat& frame);
     cv::Rect getLargestFaceRect(const std::vector<cv::Rect>& faces);
@@ -107,6 +120,7 @@ private:
     void updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime);
     void updateFacePosition(TrackedFace& face, const cv::Rect& newRect, float deltaTime);
     void updateVelocity(TrackedFace& face, const cv::Point2f& newPosition, float deltaTime);
+    void updateFaceVelocity(TrackedFace& face, const cv::Point2f& newPosition, float deltaTime);
     void updatePositionHistory(TrackedFace& face, const cv::Point2f& newPosition);
     cv::Point2f getSmoothedPosition(const TrackedFace& face) const;
     cv::Point2f getPredictedPosition(const TrackedFace& face) const;
@@ -121,4 +135,5 @@ private:
     float calculateDistance(const cv::Point2f& p1, const cv::Point2f& p2) const;
     int findClosestFace(const cv::Point2f& center, const std::vector<TrackedFace>& faces) const;
     void removeOldFaces();
+    float computeIOU(const cv::Rect& a, const cv::Rect& b);
 };

@@ -68,36 +68,151 @@ bool FaceTracker::initialize(const cv::Mat& frame) {
 }
 
 bool FaceTracker::update(const cv::Mat& frame) {
-    if (frame.empty()) {
+    if (frame.empty())
         return false;
-    }
 
-    // Получение текущего времени
     auto currentTime = std::chrono::steady_clock::now();
-    float deltaTime = 1.0f / 30.0f; // Значение по умолчанию
+    float deltaTime = 0.0f;
 
+    // Правильный расчет времени между кадрами
     if (hasPreviousTime) {
         deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
-        if (deltaTime < 0.001f) {
-            deltaTime = 0.001f; // Минимальное значение
+    }
+    hasPreviousTime = true;
+    previousTime = currentTime;
+
+    // Если deltaTime слишком мала, используем дефолтное значение
+    if (deltaTime < 0.001f) {
+        deltaTime = 1.0f / 30.0f; // Предполагаем 30 FPS
+    }
+
+    static int frameCounter = 0;
+    frameCounter++;
+
+    // Детектор не каждый кадр
+    bool doDetect = (frameCounter % 5 == 0);
+
+    std::vector<cv::Rect> detectedFaces;
+    if (doDetect) {
+        detectedFaces = detectFaces(frame);
+    }
+
+    // --- TRACK EXISTING ---
+    for (auto& face : trackedFaces) {
+        face.matched = false;
+
+        // Правильное предсказание с использованием времени
+        face.predicted = face.center + face.velocity * deltaTime;
+    }
+
+    // --- MATCH DETECTIONS TO TRACKS ---
+    for (const auto& det : detectedFaces) {
+        float bestIOU = 0.0f;
+        int bestIdx = -1;
+
+        for (int i = 0; i < (int)trackedFaces.size(); i++) {
+            auto& face = trackedFaces[i];
+            if (face.lost) continue;
+
+            float iou = computeIOU(det, face.boundingBox);
+            if (iou > bestIOU) {
+                bestIOU = iou;
+                bestIdx = i;
+            }
+        }
+
+        if (bestIdx >= 0 && bestIOU > 0.55f) {
+            auto& face = trackedFaces[bestIdx];
+
+            cv::Point2f newCenter(
+                det.x + det.width * 0.5f,
+                det.y + det.height * 0.5f
+            );
+
+            cv::Point2f lastCenter = face.center;
+
+            // Обновление центра с сглаживанием
+            face.center = 0.7f * face.center + 0.3f * newCenter;
+
+            // ОБНОВЛЕНИЕ СКОРОСТИ (как в ObjectTracker)
+            cv::Point2f displacement = face.center - lastCenter;
+
+            if (deltaTime > 0) {
+                cv::Point2f newVelocity = displacement / deltaTime;
+
+                // Сглаживание скорости (фильтр низких частот)
+                float alpha = 0.3f * std::min(deltaTime * 30.0f, 1.0f);
+                face.velocity = (1.0f - alpha) * face.velocity + alpha * newVelocity;
+            }
+
+            face.boundingBox = det;
+            face.lostFrames = 0;
+            face.matched = true;
+
+            // Обновление истории позиций
+            updatePositionHistory(face, face.center);
         }
     }
 
-    // Обнаружение лиц на текущем кадре
-    std::vector<cv::Rect> detectedFaces = detectFaces(frame);
+    // --- HANDLE LOST ---
+    for (auto& face : trackedFaces) {
+        if (!face.matched) {
+            face.lostFrames++;
+            face.center = face.predicted; // Используем предсказание
+            face.lost = (face.lostFrames > 10); // Маркируем как потерянное после 10 кадров
+        }
+        else {
+            face.lost = false;
+            face.lostFrames = 0;
+        }
 
-    // Обновление трекинга
-    updateFaceTracking(detectedFaces, deltaTime);
+        // Обновление предсказанной позиции (через 1 секунду)
+        face.predictedCenter = face.center + face.velocity * predictionTime;
+    }
 
-    // Удаление старых лиц (которые потеряны слишком долго)
-    removeOldFaces();
+    // --- ADD NEW FACES ---
+    for (const auto& det : detectedFaces) {
+        bool matched = false;
 
-    // Обновление времени
-    previousTime = currentTime;
-    hasPreviousTime = true;
+        for (auto& face : trackedFaces) {
+            if (computeIOU(det, face.boundingBox) > 0.3f) {
+                matched = true;
+                break;
+            }
+        }
 
-    return !trackedFaces.empty();
+        if (!matched) {
+            TrackedFace f;
+            f.id = nextFaceId++;
+            f.boundingBox = det;
+            f.center = { det.x + det.width * 0.5f, det.y + det.height * 0.5f };
+            f.velocity = { 0,0 };
+            f.predictedCenter = f.center;
+            f.lostFrames = 0;
+            f.matched = true;
+            f.lost = false;
+            f.age = 1;
+
+            // Инициализация времени
+            f.previousTime = currentTime;
+            f.hasPreviousPosition = false;
+
+            trackedFaces.push_back(f);
+        }
+    }
+
+    // --- REMOVE DEAD ---
+    trackedFaces.erase(
+        std::remove_if(trackedFaces.begin(), trackedFaces.end(),
+            [&](const TrackedFace& f) {
+                return f.lostFrames > maxLostFrames;
+            }),
+        trackedFaces.end()
+    );
+
+    return true;
 }
+
 
 std::vector<cv::Rect> FaceTracker::detectFaces(const cv::Mat& frame) {
     std::vector<cv::Rect> faces;
@@ -123,6 +238,8 @@ std::vector<cv::Rect> FaceTracker::detectFaces(const cv::Mat& frame) {
         minSize,
         maxSize
     );
+
+
 
     // Если фронтальные лица не найдены, ищем профильные
     //if (faces.empty() && !profileFaceCascade.empty()) {
@@ -191,6 +308,33 @@ void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces,
             face.predictedCenter = getPredictedPosition(face);
         }
     }
+
+    for (const auto& det : detectedFaces) {
+        bool matched = false;
+
+        for (auto& face : trackedFaces) {
+            float iou = computeIOU(det, face.boundingBox);
+            if (iou > 0.3f) {
+                matched = true;
+                break;
+            }
+        }
+
+        if (!matched) {
+            TrackedFace newFace;
+            newFace.id = nextFaceId++;
+            newFace.boundingBox = det;
+            newFace.center = {
+                det.x + det.width * 0.5f,
+                det.y + det.height * 0.5f
+            };
+            newFace.age = 1;
+            newFace.lost = false;
+
+            updatePositionHistory(newFace, newFace.center);
+            trackedFaces.push_back(newFace);
+        }
+    }
 }
 
 void FaceTracker::updateFacePosition(TrackedFace& face, const cv::Rect& newRect, float deltaTime) {
@@ -238,6 +382,35 @@ void FaceTracker::updateVelocity(TrackedFace& face, const cv::Point2f& newPositi
     }
 }
 
+void FaceTracker::updateFaceVelocity(TrackedFace& face, const cv::Point2f& newPosition, float deltaTime) {
+    if (!face.hasPreviousPosition) {
+        face.previousPosition = newPosition;
+        face.previousTime = std::chrono::steady_clock::now();
+        face.hasPreviousPosition = true;
+        return;
+    }
+
+    auto currentTime = std::chrono::steady_clock::now();
+    float actualDeltaTime = std::chrono::duration<float>(currentTime - face.previousTime).count();
+
+    // Если время слишком маленькое, пропускаем
+    if (actualDeltaTime < 0.001f) {
+        return;
+    }
+
+    // Вычисление скорости
+    cv::Point2f displacement = newPosition - face.previousPosition;
+    cv::Point2f newVelocity = displacement / actualDeltaTime;
+
+    // Сглаживание скорости
+    float alpha = 0.3f * std::min(actualDeltaTime * 30.0f, 1.0f);
+    face.velocity = (1.0f - alpha) * face.velocity + alpha * newVelocity;
+
+    // Обновление времени и позиции
+    face.previousPosition = newPosition;
+    face.previousTime = currentTime;
+}
+
 void FaceTracker::updatePositionHistory(TrackedFace& face, const cv::Point2f& newPosition) {
     face.positionHistory.push_back(newPosition);
 
@@ -265,6 +438,9 @@ cv::Point2f FaceTracker::getSmoothedPosition(const TrackedFace& face) const {
 
 cv::Point2f FaceTracker::getPredictedPosition(const TrackedFace& face) const {
     // Прогнозируем позицию через predictionTime секунд
+    cv::Point2f lastCenter = face.center;
+
+
     cv::Point2f predicted = face.center + face.velocity * predictionTime;
 
     // Ограничиваем прогноз рамками изображения
@@ -593,4 +769,16 @@ void FaceTracker::removeOldFaces() {
             }),
         trackedFaces.end()
     );
+}
+
+float FaceTracker::computeIOU(const cv::Rect& a, const cv::Rect& b) {
+    int x1 = std::max(a.x, b.x);
+    int y1 = std::max(a.y, b.y);
+    int x2 = std::min(a.x + a.width, b.x + b.width);
+    int y2 = std::min(a.y + a.height, b.y + b.height);
+
+    int inter = std::max(0, x2 - x1) * std::max(0, y2 - y1);
+    int unionArea = a.area() + b.area() - inter;
+
+    return unionArea > 0 ? float(inter) / unionArea : 0.0f;
 }
