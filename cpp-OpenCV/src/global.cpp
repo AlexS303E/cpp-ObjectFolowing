@@ -11,6 +11,12 @@ std::string CLASSES = "models/coco.names";
 std::string FACE_CASCADE_FRONTAL = "models/haarcascade_frontalface_default.xml";
 std::string FACE_CASCADE_PROFILE = "models/haarcascade_profileface.xml";
 
+
+enum class TrackerMode {
+    src, // Поиск всех объектов на изображении
+    trc, // Слежение за 1 объектом
+};
+
 // Вспомогательная функция для проверки существования файла
 bool fileExists(const std::string& path) {
     return fs::exists(path);

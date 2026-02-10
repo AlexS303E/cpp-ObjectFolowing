@@ -1,31 +1,26 @@
 ﻿#include "FaceTracker.h"
 #include <iostream>
 #include <algorithm>
-#include <cmath>
-#include <limits>
 
 FaceTracker::FaceTracker()
-    : nextFaceId(1), initialized(false), predictionTime(1.0f), hasPreviousTime(false),
-    detectionSkipFrames(2), framesSinceLastDetection(0), enableOptimizedDetection(true),
-    confidenceThreshold(0.5f), minTrackFramesForStable(5) {
+    : nextFaceId(1), initialized(false), predictionTime(1.0f), hasPreviousTime(false) {
 
-    // Оптимизированные параметры детектирования
-    scaleFactor = 1.15;          // Умеренный компромисс между скоростью и точностью
-    minNeighbors = 2;            // Быстрее чем 3 (меньше проверок)
-    minSize = cv::Size(40, 40);  // Больше минимальный размер (исключаем мелкие лица)
-    maxSize = cv::Size(400, 400); // Увеличиваем максимальный размер
+    // Инициализация параметров
+    scaleFactor = 1.1;
+    minNeighbors = 3;
+    minSize = cv::Size(30, 30);
+    maxSize = cv::Size(300, 300);
 
     // Цвета как в ObjectTracker (faceTrackingMode)
     faceColor = cv::Scalar(0, 255, 0);        // Зеленый для внешней рамки
     innerFaceColor = cv::Scalar(0, 200, 0);   // Светло-зеленый для внутренней рамки
     lineColor = cv::Scalar(0, 255, 0);        // Зеленый для линии
     textColor = cv::Scalar(0, 255, 0);        // Зеленый для текста
-    predictionColor = cv::Scalar(0, 255, 0);  // Зеленый для прогнозируемой позиции
+    predictionColor = cv::Scalar(0, 255, 0); // Желтый для прогнозируемой позиции
 
     try {
-        profileFaceCascade.load(FACE_CASCADE_PROFILE);
+        //profileFaceCascade.load(FACE_CASCADE_PROFILE);
         faceCascade.load(FACE_CASCADE_FRONTAL);
-        disableOptimization();
     }
     catch (...) {
         std::cerr << "Не удалось загрузить каскады Хаара" << std::endl;
@@ -88,46 +83,11 @@ bool FaceTracker::update(const cv::Mat& frame) {
         }
     }
 
-    // Увеличиваем счетчик пропущенных кадров
-    framesSinceLastDetection++;
+    // Обнаружение лиц на текущем кадре
+    std::vector<cv::Rect> detectedFaces = detectFaces(frame);
 
-    // Определяем, нужно ли выполнять детектирование на этом кадре
-    bool shouldDetect = false;
-
-    // Определяем, нужно ли выполнять детектирование
-    if (framesSinceLastDetection >= detectionSkipFrames) {
-        shouldDetect = true;
-    }
-
-    // Если нет активных лиц, всегда детектируем
-    bool hasActiveFaces = false;
-    for (const auto& face : trackedFaces) {
-        if (!face.lost) {
-            hasActiveFaces = true;
-            break;
-        }
-    }
-
-    if (!hasActiveFaces) {
-        shouldDetect = true;
-        framesSinceLastDetection = 0;
-    }
-
-    std::vector<cv::Rect> detectedFaces;
-
-    if (shouldDetect) {
-        // Выполняем детектирование лиц
-        detectedFaces = detectFaces(frame);
-        framesSinceLastDetection = 0;
-    }
-
-    // Обновление трекинга (всегда вызываем, даже при пропуске детектирования)
-    if (shouldDetect) {
-        updateTracksWithDetection(detectedFaces, deltaTime);
-    }
-    else {
-        predictTracksWithoutDetection(deltaTime);
-    }
+    // Обновление трекинга
+    updateFaceTracking(detectedFaces, deltaTime);
 
     // Удаление старых лиц (которые потеряны слишком долго)
     removeOldFaces();
@@ -137,135 +97,6 @@ bool FaceTracker::update(const cv::Mat& frame) {
     hasPreviousTime = true;
 
     return !trackedFaces.empty();
-}
-
-void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
-    // Для обратной совместимости оставляем старый метод
-    if (!detectedFaces.empty()) {
-        updateTracksWithDetection(detectedFaces, deltaTime);
-    }
-    else {
-        predictTracksWithoutDetection(deltaTime);
-    }
-}
-
-void FaceTracker::updateTracksWithDetection(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
-    // Если обнаружены лица, пытаемся сопоставить их с существующими треками
-    for (auto& face : trackedFaces) {
-        face.lost = true; // Помечаем все как потерянные
-    }
-
-    // Сопоставление обнаруженных лиц с существующими трекерами
-    std::vector<bool> matchedDetections(detectedFaces.size(), false);
-
-    // Сначала пытаемся сопоставить с активными треками
-    for (size_t i = 0; i < trackedFaces.size(); ++i) {
-        if (trackedFaces[i].lost && trackedFaces[i].age < 10) {
-            // Пропускаем треки, которые недавно потеряны
-            continue;
-        }
-
-        float minDistance = std::numeric_limits<float>::max();
-        int bestMatchIdx = -1;
-
-        for (size_t j = 0; j < detectedFaces.size(); ++j) {
-            if (matchedDetections[j]) continue;
-
-            cv::Point2f detectedCenter(
-                detectedFaces[j].x + detectedFaces[j].width / 2.0f,
-                detectedFaces[j].y + detectedFaces[j].height / 2.0f
-            );
-
-            float distance = calculateDistance(detectedCenter, trackedFaces[i].center);
-
-            // Учитываем размер лица для лучшего сопоставления
-            float sizeSimilarity = std::abs(
-                (detectedFaces[j].width * detectedFaces[j].height) -
-                (trackedFaces[i].boundingBox.width * trackedFaces[i].boundingBox.height)
-            ) / (trackedFaces[i].boundingBox.width * trackedFaces[i].boundingBox.height + 1);
-
-            float matchScore = distance * (1.0f + sizeSimilarity * 0.5f);
-
-            if (matchScore < minDistance && distance < 150.0f) {
-                minDistance = matchScore;
-                bestMatchIdx = j;
-            }
-        }
-
-        if (bestMatchIdx != -1) {
-            updateFacePosition(trackedFaces[i], detectedFaces[bestMatchIdx], deltaTime);
-            trackedFaces[i].lost = false;
-            trackedFaces[i].age++;
-            matchedDetections[bestMatchIdx] = true;
-        }
-    }
-
-    // Создаем новые треки для нераспределенных обнаружений
-    for (size_t i = 0; i < detectedFaces.size(); ++i) {
-        if (!matchedDetections[i]) {
-            cv::Point2f detectedCenter(
-                detectedFaces[i].x + detectedFaces[i].width / 2.0f,
-                detectedFaces[i].y + detectedFaces[i].height / 2.0f
-            );
-
-            TrackedFace newFace;
-            newFace.id = nextFaceId++;
-            newFace.boundingBox = detectedFaces[i];
-            newFace.center = detectedCenter;
-            newFace.age = 1;
-            newFace.lost = false;
-            updatePositionHistory(newFace, newFace.center);
-            trackedFaces.push_back(newFace);
-        }
-    }
-
-    // Обновляем возраст и прогноз для потерянных треков
-    for (auto& face : trackedFaces) {
-        if (face.lost) {
-            face.age++;
-            // Для стабильных треков увеличиваем уверенность
-            if (face.age < 15) {
-                // Используем прогноз на основе скорости
-                face.center += face.velocity * deltaTime;
-                face.boundingBox.x += face.velocity.x * deltaTime;
-                face.boundingBox.y += face.velocity.y * deltaTime;
-                face.predictedCenter = getPredictedPosition(face);
-                updatePositionHistory(face, face.center);
-            }
-        }
-    }
-}
-
-void FaceTracker::predictTracksWithoutDetection(float deltaTime) {
-    // Прогнозируем позиции на основе скорости
-    for (auto& face : trackedFaces) {
-        if (!face.lost) {
-            // Для активных треков обновляем позицию на основе скорости
-            face.center += face.velocity * deltaTime;
-            face.boundingBox.x += face.velocity.x * deltaTime;
-            face.boundingBox.y += face.velocity.y * deltaTime;
-
-            // Постепенно уменьшаем скорость (демпфирование)
-            face.velocity *= 0.95f;
-
-            // Обновляем историю позиций
-            updatePositionHistory(face, face.center);
-
-            // Обновляем прогноз
-            face.predictedCenter = getPredictedPosition(face);
-
-            face.age++;
-
-            // Если трек стабильный, не помечаем как потерянный
-            if (face.age > minTrackFramesForStable) {
-                face.lost = false;
-            }
-        }
-        else {
-            // Для потерянных треков просто увеличиваем возраст
-            face.age++;
-        }
-    }
 }
 
 std::vector<cv::Rect> FaceTracker::detectFaces(const cv::Mat& frame) {
@@ -282,72 +113,92 @@ std::vector<cv::Rect> FaceTracker::detectFaces(const cv::Mat& frame) {
     // Выравнивание гистограммы
     cv::equalizeHist(gray, gray);
 
-    // Используем оптимизированные параметры для быстрого детектирования
-    if (enableOptimizedDetection) {
-        // Быстрые параметры для детектирования
-        double fastScaleFactor = 1.15;     // Быстрее сканирование
-        int fastMinNeighbors = 2;          // Меньше проверок
-        cv::Size fastMinSize = cv::Size(40, 40);
-        cv::Size fastMaxSize = cv::Size(400, 400);
+    // Обнаружение фронтальных лиц
+    faceCascade.detectMultiScale(
+        gray,
+        faces,
+        scaleFactor,
+        minNeighbors,
+        0,
+        minSize,
+        maxSize
+    );
 
-        // Обнаружение фронтальных лиц с оптимизированными параметрами
-        faceCascade.detectMultiScale(
-            gray,
-            faces,
-            fastScaleFactor,
-            fastMinNeighbors,
-            0,
-            fastMinSize,
-            fastMaxSize
-        );
-    }
-    else {
-        faceCascade.detectMultiScale(
-            gray,
-            faces,
-            scaleFactor,
-            minNeighbors,
-            0,
-            minSize,
-            maxSize
-        );
-    }
+    // Если фронтальные лица не найдены, ищем профильные
+    //if (faces.empty() && !profileFaceCascade.empty()) {
+    //    std::vector<cv::Rect> profileFaces;
+    //    profileFaceCascade.detectMultiScale(
+    //        gray,
+    //        profileFaces,
+    //        scaleFactor,
+    //        minNeighbors,
+    //        0,
+    //        minSize,
+    //        maxSize
+    //    );
 
-    // Если фронтальные лица не найдены, ищем профильные (реже)
-    if (faces.empty() && !profileFaceCascade.empty()) {
-        // Для профильных лиц используем более агрессивные параметры
-        std::vector<cv::Rect> profileFaces;
-        profileFaceCascade.detectMultiScale(
-            gray,
-            profileFaces,
-            1.2,       // Быстрее для профильных лиц
-            2,         // Меньше проверок
-            0,
-            cv::Size(50, 50),
-            cv::Size(300, 300)
-        );
-
-        faces.insert(faces.end(), profileFaces.begin(), profileFaces.end());
-    }
+    //    faces.insert(faces.end(), profileFaces.begin(), profileFaces.end());
+    //}
 
     return faces;
 }
 
-void FaceTracker::updateFacePosition(TrackedFace& face, const cv::Rect& newRect, float deltaTime) {
-    // Сглаживание bounding box с адаптивным коэффициентом
-    float smoothingFactor = 0.7f; // Основной коэффициент сглаживания
-
-    // Для старых треков используем большее сглаживание
-    if (face.age > minTrackFramesForStable) {
-        smoothingFactor = 0.8f;
+void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
+    // Отметим все текущие лица как потерянные
+    for (auto& face : trackedFaces) {
+        face.lost = true;
     }
 
-    float newFactor = 1.0f - smoothingFactor;
+    // Сопоставление обнаруженных лиц с существующими трекерами
+    for (const auto& detectedFace : detectedFaces) {
+        cv::Point2f detectedCenter(
+            detectedFace.x + detectedFace.width / 2.0f,
+            detectedFace.y + detectedFace.height / 2.0f
+        );
 
-    face.boundingBox.x = smoothingFactor * face.boundingBox.x + newFactor * newRect.x;
-    face.boundingBox.y = smoothingFactor * face.boundingBox.y + newFactor * newRect.y;
-    face.boundingBox.width = smoothingFactor * face.boundingBox.width + newFactor * newRect.width;
-    face.boundingBox.height = smoothingFactor * face.boundingBox.height + newFactor * newRect.height;
+        // Поиск ближайшего существующего лица
+        int closestIndex = findClosestFace(detectedCenter, trackedFaces);
+
+        if (closestIndex >= 0) {
+            // Обновляем существующее лицо
+            float distance = calculateDistance(detectedCenter, trackedFaces[closestIndex].center);
+
+            if (distance < 200.0f) { // Максимальное расстояние для сопоставления
+                updateFacePosition(trackedFaces[closestIndex], detectedFace, deltaTime);
+                trackedFaces[closestIndex].lost = false;
+                trackedFaces[closestIndex].age++;
+            }
+        }
+        else {
+            // Создаем новый трекер для лица
+            TrackedFace newFace;
+            newFace.id = nextFaceId++;
+            newFace.boundingBox = detectedFace;
+            newFace.center = detectedCenter;
+            newFace.age = 1;
+            newFace.lost = false;
+
+            updatePositionHistory(newFace, newFace.center);
+            trackedFaces.push_back(newFace);
+        }
+    }
+
+    // Для потерянных лиц увеличиваем возраст и обновляем прогноз
+    for (auto& face : trackedFaces) {
+        if (face.lost) {
+            face.age++;
+            // Используем последнюю известную скорость для прогноза
+            face.predictedCenter = getPredictedPosition(face);
+        }
+    }
+}
+
+void FaceTracker::updateFacePosition(TrackedFace& face, const cv::Rect& newRect, float deltaTime) {
+    // Сглаживание bounding box (70% старого + 30% нового)
+    face.boundingBox.x = 0.7f * face.boundingBox.x + 0.3f * newRect.x;
+    face.boundingBox.y = 0.7f * face.boundingBox.y + 0.3f * newRect.y;
+    face.boundingBox.width = 0.7f * face.boundingBox.width + 0.3f * newRect.width;
+    face.boundingBox.height = 0.7f * face.boundingBox.height + 0.3f * newRect.height;
 
     // Обновление центра
     cv::Point2f newCenter(
@@ -369,7 +220,7 @@ void FaceTracker::updateFacePosition(TrackedFace& face, const cv::Rect& newRect,
 }
 
 void FaceTracker::updateVelocity(TrackedFace& face, const cv::Point2f& newPosition, float deltaTime) {
-    if (face.positionHistory.size() >= 2 && deltaTime > 0.001f) {
+    if (face.positionHistory.size() >= 2) {
         // Берем последнюю позицию из истории
         cv::Point2f lastPosition = face.positionHistory.back();
 
@@ -377,21 +228,12 @@ void FaceTracker::updateVelocity(TrackedFace& face, const cv::Point2f& newPositi
         cv::Point2f displacement = newPosition - lastPosition;
 
         // Вычисляем скорость (пикселей в секунду)
-        cv::Point2f newVelocity = displacement / deltaTime;
+        if (deltaTime > 0) {
+            cv::Point2f newVelocity = displacement / deltaTime;
 
-        // Адаптивное сглаживание скорости
-        float alpha = 0.3f;
-        if (face.age > 10) {
-            alpha = 0.2f; // Для старых треков более плавное обновление
-        }
-
-        face.velocity = (1.0f - alpha) * face.velocity + alpha * newVelocity;
-
-        // Ограничиваем максимальную скорость
-        float maxSpeed = 300.0f; // пикселей в секунду
-        float currentSpeed = std::sqrt(face.velocity.x * face.velocity.x + face.velocity.y * face.velocity.y);
-        if (currentSpeed > maxSpeed) {
-            face.velocity = face.velocity * (maxSpeed / currentSpeed);
+            // Сглаживание скорости (фильтр низких частот)
+            float alpha = 0.3f;
+            face.velocity = (1.0f - alpha) * face.velocity + alpha * newVelocity;
         }
     }
 }
@@ -425,6 +267,8 @@ cv::Point2f FaceTracker::getPredictedPosition(const TrackedFace& face) const {
     // Прогнозируем позицию через predictionTime секунд
     cv::Point2f predicted = face.center + face.velocity * predictionTime;
 
+    // Ограничиваем прогноз рамками изображения
+    // (это будет уточнено при отрисовке)
     return predicted;
 }
 
@@ -522,7 +366,7 @@ void FaceTracker::drawTrackingInfo(cv::Mat& frame) const {
 
                 // Вычисляем вектор от центра квадрата к центру круга
                 cv::Point2f direction = prediction - rectCenter;
-                float distance = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+                float distance = sqrt(direction.x * direction.x + direction.y * direction.y);
 
                 if (distance > 0) {
                     // Нормализуем вектор
@@ -543,7 +387,7 @@ void FaceTracker::drawTrackingInfo(cv::Mat& frame) const {
 
                 // Вычисляем вектор от центра окружности к точке на границе квадрата
                 cv::Point2f direction = rectBoundary - prediction;
-                float distance = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+                float distance = sqrt(direction.x * direction.x + direction.y * direction.y);
 
                 if (distance > 0) {
                     // Нормализуем вектор
@@ -621,7 +465,6 @@ void FaceTracker::reset() {
     nextFaceId = 1;
     initialized = false;
     hasPreviousTime = false;
-    framesSinceLastDetection = 0;
 }
 
 bool FaceTracker::isInitialized() const {
@@ -728,7 +571,7 @@ int FaceTracker::findClosestFace(const cv::Point2f& center, const std::vector<Tr
     }
 
     int closestIndex = -1;
-    float minDistance = 200.0f; // Максимальное расстояние для сопоставления
+    float minDistance = 1000.0f; // Большое начальное значение
 
     for (size_t i = 0; i < faces.size(); ++i) {
         float distance = calculateDistance(center, faces[i].center);
@@ -750,27 +593,4 @@ void FaceTracker::removeOldFaces() {
             }),
         trackedFaces.end()
     );
-}
-
-void FaceTracker::setOptimizationParams(int skipFrames, bool optimizedDetection) {
-    detectionSkipFrames = std::max(1, skipFrames); // Минимум 1 кадр
-    enableOptimizedDetection = optimizedDetection;
-    framesSinceLastDetection = 0;
-
-    std::cout << "FaceTracker оптимизация: пропуск кадров = " << detectionSkipFrames
-        << ", оптимизированное детектирование = " << (optimizedDetection ? "да" : "нет") << std::endl;
-}
-
-void FaceTracker::disableOptimization() {
-    detectionSkipFrames = 1;  // Детектировать на каждом кадре
-    enableOptimizedDetection = false;  // Использовать стандартные параметры детектирования
-    framesSinceLastDetection = 0;
-
-    // Используем более точные параметры детектирования
-    scaleFactor = 1.1;          // Стандартный параметр (больше точность, меньше скорость)
-    minNeighbors = 3;           // Стандартный параметр (больше проверок, меньше ложных срабатываний)
-    minSize = cv::Size(30, 30); // Стандартный минимальный размер
-    maxSize = cv::Size(300, 300); // Стандартный максимальный размер
-
-    std::cout << "FaceTracker оптимизация ОТКЛЮЧЕНА: детектирование на каждом кадре с точными параметрами" << std::endl;
 }
