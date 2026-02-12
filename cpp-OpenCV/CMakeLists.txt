@@ -50,7 +50,7 @@ set(HEADER_FILES
 )
 
 # === Создание исполняемого файла ===
-add_executable(WebcamViewer ${SOURCE_FILES} ${HEADER_FILES})
+add_executable(WebcamViewer ${SOURCE_FILES} ${HEADER_FILES} "src/Trackers/Renderer.h" "src/Trackers/Renderer.cpp")
 
 # === Настройки цели ===
 set_target_properties(WebcamViewer PROPERTIES

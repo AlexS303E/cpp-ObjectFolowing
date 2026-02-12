@@ -7,14 +7,21 @@
 #include <chrono>
 #include <deque>
 #include "./global.h"
-
+#include "Renderer.h"
 
 enum class TrackerMode {
     src, // Поиск всех объектов на изображении
     trc, // Слежение за 1 объектом
 };
 
-// Структура для отслеживаемого лица с прогнозированием
+enum class TargetStatus {
+    find,
+    lock,
+    softlock,
+    lost,
+};
+
+// Структура TrackedFace остаётся без изменений
 struct TrackedFace {
     cv::Rect boundingBox;
     cv::Point2f center;
@@ -26,13 +33,14 @@ struct TrackedFace {
     bool lost;
     std::deque<cv::Point2f> positionHistory;
 
-    // Для расчета скорости (как в ObjectTracker)
     cv::Point2f previousPosition;
     std::chrono::steady_clock::time_point previousTime;
     bool hasPreviousPosition;
 
     int lostFrames = 0;
     bool matched = false;
+
+    TargetStatus currentStatus = TargetStatus::find;
 
     TrackedFace() : id(0), age(0), lost(false), hasPreviousPosition(false) {
         boundingBox = cv::Rect(0, 0, 0, 0);
@@ -48,29 +56,20 @@ public:
     FaceTracker();
     ~FaceTracker() = default;
 
-    // Основной метод обновления трекинга
     bool update(const cv::Mat& frame);
-
-    // Инициализация трекинга по первому кадру
     bool initialize(const cv::Mat& frame);
 
-    // Отрисовка всех отслеживаемых лиц с прогнозами
+    // Метод отрисовки теперь делегирует работу рендереру
     void drawTrackingInfo(cv::Mat& frame) const;
 
-    // Сброс всех трекеров
     void reset();
-
-    // Проверка инициализации
     bool isInitialized() const;
-
-    // Получение всех отслеживаемых лиц
     std::vector<TrackedFace> getTrackedFaces() const;
-
-    // Получение центра самого большого лица
     cv::Point2f getLargestFaceCenter() const;
-
-    // Получение самого большого лица
     TrackedFace getLargestFace() const;
+
+    // Новый метод для доступа к данным (const ссылка)
+    const std::vector<TrackedFace>& getTrackedFacesRef() const { return trackedFaces; }
 
 private:
     std::vector<TrackedFace> trackedFaces;
@@ -79,36 +78,22 @@ private:
 
     // Параметры детектирования
     cv::CascadeClassifier faceCascade;
-    //cv::CascadeClassifier profileFaceCascade;
     double scaleFactor;
     int minNeighbors;
     cv::Size minSize;
     cv::Size maxSize;
 
     // Параметры прогнозирования
-    float predictionTime;          // Время прогноза (1 секунда)
-    const int maxHistorySize = 10; // Максимальный размер истории позиций
+    float predictionTime;
+    const int maxHistorySize = 10;
 
-    // Для расчета времени между кадрами
+    // Для расчёта времени между кадрами
     std::chrono::steady_clock::time_point previousTime;
-    std::chrono::high_resolution_clock::time_point lastUpdateTime;
     bool hasPreviousTime;
 
-    // Цвета для отрисовки
-    cv::Scalar faceColor;
-    cv::Scalar innerFaceColor;
-    cv::Scalar circleColor;
-    cv::Scalar lineColor;
-    cv::Scalar textColor;
-    cv::Scalar predictionColor;
-
-    // Параметры отрисовки
-    const int PREDICTION_RADIUS = 26;
-    const int BORDER_THICKNESS = 3;
-    const int INNER_BORDER_THICKNESS = 1;
-    const int CIRCLE_THICKNESS = 4;
-    const int PREDICTION_THICKNESS = 3;
-    const int LINE_THICKNESS = 2;
+    // ---------- Удалены все графические поля и константы ----------
+    // Вместо них – экземпляр рендерера
+    Renderer renderer;
 
     int maxLostFrames = 15;
 
@@ -116,7 +101,6 @@ private:
     std::vector<cv::Rect> detectFaces(const cv::Mat& frame);
     cv::Rect getLargestFaceRect(const std::vector<cv::Rect>& faces);
 
-    // Методы для трекинга и прогнозирования
     void updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime);
     void updateFacePosition(TrackedFace& face, const cv::Rect& newRect, float deltaTime);
     void updateVelocity(TrackedFace& face, const cv::Point2f& newPosition, float deltaTime);
@@ -125,13 +109,9 @@ private:
     cv::Point2f getSmoothedPosition(const TrackedFace& face) const;
     cv::Point2f getPredictedPosition(const TrackedFace& face) const;
 
-    // Методы для отрисовки
-    cv::Point2f getClosestPointOnRect(const cv::Rect& rect, const cv::Point2f& point) const;
-    cv::Point2f getPointOnCircle(const cv::Point2f& circleCenter,
-        const cv::Point2f& targetPoint,
-        float radius) const;
+    // ---------- Удалены методы, связанные с отрисовкой ----------
+    // getClosestPointOnRect, getPointOnCircle – теперь в рендерере
 
-    // Вспомогательные методы
     float calculateDistance(const cv::Point2f& p1, const cv::Point2f& p2) const;
     int findClosestFace(const cv::Point2f& center, const std::vector<TrackedFace>& faces) const;
     void removeOldFaces();
