@@ -1,14 +1,14 @@
-#include "Renderer.h"
+п»ї#include "Renderer.h"
 #include <algorithm>
 #include "FaceTracker.h"
 
 Renderer::Renderer()
-    : faceColor(0, 255, 0)           // зелёный
-    , innerFaceColor(0, 200, 0)      // светло-зелёный
-    , lineColor(0, 255, 0)           // зелёный
-    , textColor(0, 255, 0)           // зелёный
-    , predictionColor(0, 255, 0)     // зелёный
-    , lostColor(0, 0, 255)          // красный
+    : faceColor(0, 255, 0)           // пїЅпїЅпїЅпїЅпїЅпїЅ
+    , innerFaceColor(0, 200, 0)      // пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅ
+    , lineColor(0, 255, 0)           // пїЅпїЅпїЅпїЅпїЅпїЅ
+    , textColor(0, 255, 0)           // пїЅпїЅпїЅпїЅпїЅпїЅ
+    , predictionColor(0, 255, 0)     // пїЅпїЅпїЅпїЅпїЅпїЅ
+    , lostColor(0, 0, 255)          // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     , PREDICTION_RADIUS(26)
     , BORDER_THICKNESS(3)
     , INNER_BORDER_THICKNESS(1)
@@ -19,7 +19,7 @@ Renderer::Renderer()
 
 void Renderer::draw(cv::Mat& frame, const std::vector<TrackedFace>& faces, bool isInitialized) const {
     if (faces.empty()) {
-        // Информационная панель, когда лиц нет
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ
         cv::Rect infoPanel(10, 10, 300, 90);
         cv::rectangle(frame, infoPanel, cv::Scalar(50, 50, 50), -1);
         cv::rectangle(frame, infoPanel, cv::Scalar(200, 200, 200), 1);
@@ -31,63 +31,45 @@ void Renderer::draw(cv::Mat& frame, const std::vector<TrackedFace>& faces, bool 
         return;
     }
 
-    // Рисуем каждое лицо
+    // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     for (const auto& face : faces) {
-        drawTargetFind(frame, face);
+        switch (face.currentStatus) {
+        case TargetStatus::find:
+            drawTargetFind(frame, face);
+            break;
+        case TargetStatus::lost:
+            drawTargetLost(frame, face);
+            break;
+        case TargetStatus::softlock:
+            drawTargetSoftLock(frame, face);
+            break;
+        case TargetStatus::lock:
+            drawTargetLock(frame, face);
+            break;
+        }
+        
     }
 
-    // Информационная панель со статистикой
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     drawInfoPanel(frame, faces);
 }
 
 void Renderer::drawTargetLock(cv::Mat& frame, const TrackedFace& face) const {
-    if (face.lost) {
-        // Пунктирная красная рамка
-        int dashLength = 10, gapLength = 5;
-        cv::Scalar red = lostColor;
 
-        auto drawDashedLine = [&](cv::Point p1, cv::Point p2, bool horizontal) {
-            int length = horizontal ? (p2.x - p1.x) : (p2.y - p1.y);
-            for (int pos = 0; pos < length; pos += dashLength + gapLength) {
-                int endPos = std::min(pos + dashLength, length);
-                if (horizontal)
-                    cv::line(frame, cv::Point(p1.x + pos, p1.y), cv::Point(p1.x + endPos, p1.y), red, BORDER_THICKNESS);
-                else
-                    cv::line(frame, cv::Point(p1.x, p1.y + pos), cv::Point(p1.x, p1.y + endPos), red, BORDER_THICKNESS);
-            }
-            };
-
-        // Верхняя и нижняя границы
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y), true);
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), true);
-        // Левая и правая
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
-            cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height), false);
-        drawDashedLine(cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), false);
-
-        cv::putText(frame, "LOST",
-            cv::Point(face.boundingBox.x, face.boundingBox.y - 10),
-            cv::FONT_HERSHEY_SIMPLEX, 0.7, red, 2);
-        return;
-    }
-
-    // Активное лицо – зелёная рамка
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
     cv::rectangle(frame, face.boundingBox, faceColor, BORDER_THICKNESS);
     cv::rectangle(frame, face.boundingBox, innerFaceColor, INNER_BORDER_THICKNESS);
     cv::putText(frame, "FACE",
         cv::Point(face.boundingBox.x, face.boundingBox.y - 10),
         cv::FONT_HERSHEY_SIMPLEX, 0.7, textColor, 2);
 
-    // Прогнозируемая позиция (жёлтый круг)
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ)
     cv::Point2f prediction = face.predictedCenter;
     prediction.x = std::max(0.0f, std::min(prediction.x, (float)frame.cols));
     prediction.y = std::max(0.0f, std::min(prediction.y, (float)frame.rows));
     cv::circle(frame, prediction, PREDICTION_RADIUS, predictionColor, PREDICTION_THICKNESS);
 
-    // Линия соединения (логика как в ObjectTracker)
+    // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅ ObjectTracker)
     bool circleInsideRect = prediction.x >= face.boundingBox.x &&
         prediction.x <= face.boundingBox.x + face.boundingBox.width &&
         prediction.y >= face.boundingBox.y &&
@@ -98,7 +80,7 @@ void Renderer::drawTargetLock(cv::Mat& frame, const TrackedFace& face) const {
         cv::Point2f direction = prediction - rectCenter;
         float dist = cv::norm(direction);
         if (dist > 0) {
-            direction *= (dist - PREDICTION_RADIUS) / dist; // точка на границе круга
+            direction *= (dist - PREDICTION_RADIUS) / dist; // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
             cv::Point2f circleBoundary = rectCenter + direction;
             cv::line(frame, rectCenter, circleBoundary, lineColor, LINE_THICKNESS);
         }
@@ -114,12 +96,12 @@ void Renderer::drawTargetLock(cv::Mat& frame, const TrackedFace& face) const {
         }
     }
 
-    // Подпись "prediction"
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ "prediction"
     cv::putText(frame, "prediction",
         cv::Point(prediction.x + PREDICTION_RADIUS + 5, prediction.y - 5),
         cv::FONT_HERSHEY_SIMPLEX, 0.5, predictionColor, 1);
 
-    // Информация под рамкой
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     std::string info = "ID: " + std::to_string(face.id) + " Age: " + std::to_string(face.age);
     cv::putText(frame, info,
         cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height + 20),
@@ -127,40 +109,8 @@ void Renderer::drawTargetLock(cv::Mat& frame, const TrackedFace& face) const {
 }
 
 void Renderer::drawTargetSoftLock(cv::Mat& frame, const TrackedFace& face) const {
-    if (face.lost) {
-        // Пунктирная красная рамка
-        int dashLength = 10, gapLength = 5;
-        cv::Scalar red = lostColor;
 
-        auto drawDashedLine = [&](cv::Point p1, cv::Point p2, bool horizontal) {
-            int length = horizontal ? (p2.x - p1.x) : (p2.y - p1.y);
-            for (int pos = 0; pos < length; pos += dashLength + gapLength) {
-                int endPos = std::min(pos + dashLength, length);
-                if (horizontal)
-                    cv::line(frame, cv::Point(p1.x + pos, p1.y), cv::Point(p1.x + endPos, p1.y), red, BORDER_THICKNESS);
-                else
-                    cv::line(frame, cv::Point(p1.x, p1.y + pos), cv::Point(p1.x, p1.y + endPos), red, BORDER_THICKNESS);
-            }
-            };
-
-        // Верхняя и нижняя границы
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y), true);
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), true);
-        // Левая и правая
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
-            cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height), false);
-        drawDashedLine(cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), false);
-
-        cv::putText(frame, "LOST",
-            cv::Point(face.boundingBox.x, face.boundingBox.y - 10),
-            cv::FONT_HERSHEY_SIMPLEX, 0.7, red, 2);
-        return;
-    }
-
-    // Активное лицо – зелёная рамка
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
     cv::rectangle(frame, face.boundingBox, faceColor, BORDER_THICKNESS);
     cv::rectangle(frame, face.boundingBox, innerFaceColor, INNER_BORDER_THICKNESS);
     cv::putText(frame, "FACE",
@@ -168,7 +118,7 @@ void Renderer::drawTargetSoftLock(cv::Mat& frame, const TrackedFace& face) const
         cv::FONT_HERSHEY_SIMPLEX, 0.7, textColor, 2);
 
 
-    // Информация под рамкой
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     std::string info = "ID: " + std::to_string(face.id) + " Age: " + std::to_string(face.age);
     cv::putText(frame, info,
         cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height + 20),
@@ -176,49 +126,62 @@ void Renderer::drawTargetSoftLock(cv::Mat& frame, const TrackedFace& face) const
 }
 
 void Renderer::drawTargetFind(cv::Mat& frame, const TrackedFace& face) const {
-    if (face.lost) {
-        // Пунктирная красная рамка
-        int dashLength = 10, gapLength = 5;
-        cv::Scalar red = lostColor;
-
-        auto drawDashedLine = [&](cv::Point p1, cv::Point p2, bool horizontal) {
-            int length = horizontal ? (p2.x - p1.x) : (p2.y - p1.y);
-            for (int pos = 0; pos < length; pos += dashLength + gapLength) {
-                int endPos = std::min(pos + dashLength, length);
-                if (horizontal)
-                    cv::line(frame, cv::Point(p1.x + pos, p1.y), cv::Point(p1.x + endPos, p1.y), red, BORDER_THICKNESS);
-                else
-                    cv::line(frame, cv::Point(p1.x, p1.y + pos), cv::Point(p1.x, p1.y + endPos), red, BORDER_THICKNESS);
-            }
-            };
-
-        // Верхняя и нижняя границы
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y), true);
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), true);
-        // Левая и правая
-        drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
-            cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height), false);
-        drawDashedLine(cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y),
-            cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), false);
-
-        cv::putText(frame, "LOST",
-            cv::Point(face.boundingBox.x, face.boundingBox.y - 10),
-            cv::FONT_HERSHEY_SIMPLEX, 0.7, red, 2);
-        return;
-    }
-
-    // Активное лицо – зелёная рамка
-    cv::rectangle(frame, face.boundingBox, faceColor, BORDER_THICKNESS);
-    cv::rectangle(frame, face.boundingBox, innerFaceColor, INNER_BORDER_THICKNESS);
     
+    // ----- NEW: draw only four corners (LвЂ‘shaped) -----
+    int x = face.boundingBox.x;
+    int y = face.boundingBox.y;
+    int w = face.boundingBox.width;
+    int h = face.boundingBox.height;
+    int l = CalculateFindConorLength(w, h);   // length of each corner arm
 
-    // Информация под рамкой
+    // TopвЂ‘left
+    cv::line(frame, cv::Point(x, y), cv::Point(x + l, y), faceColor, BORDER_THICKNESS);
+    cv::line(frame, cv::Point(x, y), cv::Point(x, y + l), faceColor, BORDER_THICKNESS);
+    // TopвЂ‘right
+    cv::line(frame, cv::Point(x + w, y), cv::Point(x + w - l, y), faceColor, BORDER_THICKNESS);
+    cv::line(frame, cv::Point(x + w, y), cv::Point(x + w, y + l), faceColor, BORDER_THICKNESS);
+    // BottomвЂ‘left
+    cv::line(frame, cv::Point(x, y + h), cv::Point(x + l, y + h), faceColor, BORDER_THICKNESS);
+    cv::line(frame, cv::Point(x, y + h), cv::Point(x, y + h - l), faceColor, BORDER_THICKNESS);
+    // BottomвЂ‘right
+    cv::line(frame, cv::Point(x + w, y + h), cv::Point(x + w - l, y + h), faceColor, BORDER_THICKNESS);
+    cv::line(frame, cv::Point(x + w, y + h), cv::Point(x + w, y + h - l), faceColor, BORDER_THICKNESS);
+
+    // ----- unchanged: info text below the box -----
     std::string info = "ID: " + std::to_string(face.id) + " Age: " + std::to_string(face.age);
     cv::putText(frame, info,
         cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height + 20),
         cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(200, 200, 200), 1);
+}
+
+void Renderer::drawTargetLost(cv::Mat& frame, const TrackedFace& face) const{
+    // ----- unchanged: dashed red full rectangle -----
+    int dashLength = 10, gapLength = 5;
+    cv::Scalar red = lostColor;
+    auto drawDashedLine = [&](cv::Point p1, cv::Point p2, bool horizontal) {
+        int length = horizontal ? (p2.x - p1.x) : (p2.y - p1.y);
+        for (int pos = 0; pos < length; pos += dashLength + gapLength) {
+            int endPos = std::min(pos + dashLength, length);
+            if (horizontal)
+                cv::line(frame, cv::Point(p1.x + pos, p1.y), cv::Point(p1.x + endPos, p1.y), red, BORDER_THICKNESS);
+            else
+                cv::line(frame, cv::Point(p1.x, p1.y + pos), cv::Point(p1.x, p1.y + endPos), red, BORDER_THICKNESS);
+        }
+        };
+
+    drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
+        cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y), true);
+    drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height),
+        cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), true);
+    drawDashedLine(cv::Point(face.boundingBox.x, face.boundingBox.y),
+        cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height), false);
+    drawDashedLine(cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y),
+        cv::Point(face.boundingBox.x + face.boundingBox.width, face.boundingBox.y + face.boundingBox.height), false);
+
+    cv::putText(frame, "LOST",
+        cv::Point(face.boundingBox.x, face.boundingBox.y - 10),
+        cv::FONT_HERSHEY_SIMPLEX, 0.7, red, 2);
+    return;
 }
 
 void Renderer::drawInfoPanel(cv::Mat& frame, const std::vector<TrackedFace>& faces) const {
@@ -231,13 +194,13 @@ void Renderer::drawInfoPanel(cv::Mat& frame, const std::vector<TrackedFace>& fac
 
     int activeFaces = 0;
     for (const auto& f : faces)
-        if (!f.lost) activeFaces++;
+        if (!f.IsLost()) activeFaces++;
 
     std::string status = "Status: " + std::to_string(activeFaces) + " active / " + std::to_string(faces.size()) + " total";
     cv::Scalar statusColor = (activeFaces > 0) ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255);
     cv::putText(frame, status, cv::Point(20, 65), cv::FONT_HERSHEY_SIMPLEX, 0.6, statusColor, 2);
 
-    // Поиск самого большого лица
+    // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     if (!faces.empty()) {
         auto largestIt = std::max_element(faces.begin(), faces.end(),
             [](const TrackedFace& a, const TrackedFace& b) {
@@ -257,7 +220,7 @@ cv::Point2f Renderer::getClosestPointOnRect(const cv::Rect& rect, const cv::Poin
     float closestX = std::max((float)rect.x, std::min(point.x, (float)(rect.x + rect.width)));
     float closestY = std::max((float)rect.y, std::min(point.y, (float)(rect.y + rect.height)));
 
-    // Если точка внутри прямоугольника – находим ближайшую сторону
+    // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     if (closestX > rect.x && closestX < rect.x + rect.width &&
         closestY > rect.y && closestY < rect.y + rect.height) {
         float dLeft = closestX - rect.x;
@@ -284,8 +247,12 @@ cv::Point2f Renderer::getPointOnCircle(const cv::Point2f& circleCenter,
     return circleCenter + dir;
 }
 
-// Сеттеры для цветов
+int Renderer::CalculateFindConorLength(int w, int h) const {
+    return w * 0.20;
+}
+
+// пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 void Renderer::setFaceColor(const cv::Scalar& color) { faceColor = color; }
 void Renderer::setPredictionColor(const cv::Scalar& color) { predictionColor = color; }
 void Renderer::setLostColor(const cv::Scalar& color) { lostColor = color; }
-// ... остальные сеттеры аналогично
+// ... пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ

@@ -30,7 +30,6 @@ struct TrackedFace {
     cv::Point2f predicted = { 0,0 };
     int id;
     int age;
-    bool lost;
     std::deque<cv::Point2f> positionHistory;
 
     cv::Point2f previousPosition;
@@ -42,12 +41,16 @@ struct TrackedFace {
 
     TargetStatus currentStatus = TargetStatus::find;
 
-    TrackedFace() : id(0), age(0), lost(false), hasPreviousPosition(false) {
+    TrackedFace() : id(0), age(0), currentStatus(TargetStatus::find), hasPreviousPosition(false) {
         boundingBox = cv::Rect(0, 0, 0, 0);
         center = cv::Point2f(0, 0);
         velocity = cv::Point2f(0, 0);
         predictedCenter = cv::Point2f(0, 0);
         previousPosition = cv::Point2f(0, 0);
+    }
+
+    bool IsLost() const {
+        return currentStatus == TargetStatus::lost;
     }
 };
 
@@ -96,6 +99,8 @@ private:
     Renderer renderer;
 
     int maxLostFrames = 15;
+
+    float smoothAlpha = 0.25f;
 
     // Приватные методы
     std::vector<cv::Rect> detectFaces(const cv::Mat& frame);

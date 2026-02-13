@@ -37,7 +37,7 @@ bool FaceTracker::initialize(const cv::Mat& frame) {
         face.center = cv::Point2f(faceRect.x + faceRect.width / 2.0f,
             faceRect.y + faceRect.height / 2.0f);
         face.age = 1;
-        face.lost = false;
+        face.currentStatus = TargetStatus::lost;
         updatePositionHistory(face, face.center);
         trackedFaces.push_back(face);
     }
@@ -83,7 +83,7 @@ bool FaceTracker::update(const cv::Mat& frame) {
         int bestIdx = -1;
         for (int i = 0; i < (int)trackedFaces.size(); i++) {
             auto& face = trackedFaces[i];
-            if (face.lost) continue;
+            if (face.IsLost()) continue;
             float iou = computeIOU(det, face.boundingBox);
             if (iou > bestIOU) {
                 bestIOU = iou;
@@ -114,10 +114,11 @@ bool FaceTracker::update(const cv::Mat& frame) {
         if (!face.matched) {
             face.lostFrames++;
             face.center = face.predicted;
-            face.lost = (face.lostFrames > 10);
+            face.currentStatus = (face.lostFrames > 10 ? face.currentStatus = TargetStatus::lost : TargetStatus::find);
+            //face.lost = (face.lostFrames > 10);
         }
         else {
-            face.lost = false;
+            face.currentStatus = TargetStatus::find;
             face.lostFrames = 0;
         }
         face.predictedCenter = face.center + face.velocity * predictionTime;
@@ -141,7 +142,7 @@ bool FaceTracker::update(const cv::Mat& frame) {
             f.predictedCenter = f.center;
             f.lostFrames = 0;
             f.matched = true;
-            f.lost = false;
+            f.currentStatus = TargetStatus::find;
             f.age = 1;
             f.previousTime = currentTime;
             f.hasPreviousPosition = false;
@@ -183,7 +184,7 @@ std::vector<cv::Rect> FaceTracker::detectFaces(const cv::Mat& frame) {
 // (они не используют графику, поэтому их трогать не нужно)
 
 void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
-    for (auto& face : trackedFaces) face.lost = true;
+    for (auto& face : trackedFaces) face.currentStatus = TargetStatus::lost;
     for (const auto& detectedFace : detectedFaces) {
         cv::Point2f detectedCenter(detectedFace.x + detectedFace.width / 2.0f,
             detectedFace.y + detectedFace.height / 2.0f);
@@ -192,7 +193,7 @@ void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces,
             float distance = calculateDistance(detectedCenter, trackedFaces[closestIndex].center);
             if (distance < 200.0f) {
                 updateFacePosition(trackedFaces[closestIndex], detectedFace, deltaTime);
-                trackedFaces[closestIndex].lost = false;
+                trackedFaces[closestIndex].currentStatus = TargetStatus::find;
                 trackedFaces[closestIndex].age++;
             }
         }
@@ -202,13 +203,13 @@ void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces,
             newFace.boundingBox = detectedFace;
             newFace.center = detectedCenter;
             newFace.age = 1;
-            newFace.lost = false;
+            newFace.currentStatus = TargetStatus::find;
             updatePositionHistory(newFace, newFace.center);
             trackedFaces.push_back(newFace);
         }
     }
     for (auto& face : trackedFaces) {
-        if (face.lost) {
+        if (face.IsLost()) {
             face.age++;
             face.predictedCenter = getPredictedPosition(face);
         }
@@ -229,7 +230,7 @@ void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces,
             newFace.boundingBox = det;
             newFace.center = { det.x + det.width * 0.5f, det.y + det.height * 0.5f };
             newFace.age = 1;
-            newFace.lost = false;
+            newFace.currentStatus = TargetStatus::find;
             updatePositionHistory(newFace, newFace.center);
             trackedFaces.push_back(newFace);
         }
@@ -364,7 +365,7 @@ int FaceTracker::findClosestFace(const cv::Point2f& center, const std::vector<Tr
 void FaceTracker::removeOldFaces() {
     trackedFaces.erase(
         std::remove_if(trackedFaces.begin(), trackedFaces.end(),
-            [](const TrackedFace& face) { return face.lost && face.age > 30; }),
+            [](const TrackedFace& face) { return face.IsLost() && face.age > 30; }),
         trackedFaces.end()
     );
 }

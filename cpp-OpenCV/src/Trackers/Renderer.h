@@ -1,4 +1,4 @@
-#pragma once
+п»ї#pragma once
 
 #include <opencv2/opencv.hpp>
 #include <vector>
@@ -9,41 +9,42 @@ class Renderer {
 public:
     Renderer();
 
-    // Главный метод отрисовки всей информации
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     void draw(cv::Mat& frame, const std::vector<TrackedFace>& faces, bool isInitialized = true) const;
 
-    // Настройка цветов (опционально)
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
     void setFaceColor(const cv::Scalar& color);
     void setPredictionColor(const cv::Scalar& color);
     void setLostColor(const cv::Scalar& color);
-    // ... аналогично для других цветов
+    // ... пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 
 private:
-    // Цвета
+    // пїЅпїЅпїЅпїЅпїЅ
     cv::Scalar faceColor;
     cv::Scalar innerFaceColor;
     cv::Scalar lineColor;
     cv::Scalar textColor;
     cv::Scalar predictionColor;
-    cv::Scalar lostColor;       // для потерянных лиц
+    cv::Scalar lostColor;       // пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ
 
-    // Константы отрисовки (раньше были в FaceTracker)
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅ FaceTracker)
     int PREDICTION_RADIUS;
     int BORDER_THICKNESS;
     int INNER_BORDER_THICKNESS;
     int PREDICTION_THICKNESS;
     int LINE_THICKNESS;
 
-    // Вспомогательные методы
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
     void drawTargetLock(cv::Mat& frame, const TrackedFace& face) const;
     void drawTargetSoftLock(cv::Mat& frame, const TrackedFace& face) const;
     void drawTargetFind(cv::Mat& frame, const TrackedFace& face) const;
+    void drawTargetLost(cv::Mat& frame, const TrackedFace& face) const;
 
     void drawInfoPanel(cv::Mat& frame, const std::vector<TrackedFace>& faces) const;
 
-    // Геометрические вычисления (перенесены из FaceTracker)
+    // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ FaceTracker)
     cv::Point2f getClosestPointOnRect(const cv::Rect& rect, const cv::Point2f& point) const;
-    cv::Point2f getPointOnCircle(const cv::Point2f& circleCenter,
-        const cv::Point2f& targetPoint,
-        float radius) const;
+    cv::Point2f getPointOnCircle(const cv::Point2f& circleCenter, const cv::Point2f& targetPoint, float radius) const;
+
+    int CalculateFindConorLength(int w, int h) const;
 };
