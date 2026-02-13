@@ -1,18 +1,19 @@
 ﻿#include "FaceTracker.h"
 #include <iostream>
 #include <algorithm>
+#include <numeric>
 
 FaceTracker::FaceTracker()
     : nextFaceId(1), initialized(false), predictionTime(1.0f), hasPreviousTime(false) {
 
-    scaleFactor = 1.1;
-    minNeighbors = 3;
-    minSize = cv::Size(30, 30);
-    maxSize = cv::Size(300, 300);
+    scaleFactor = 1.12;
+    minNeighbors = 7;
+    minSize = cv::Size(25, 25);
+    maxSize = cv::Size(400, 400);
 
     // Настройка цветов рендерера (соответствуют прежним)
     renderer.setFaceColor(cv::Scalar(0, 255, 0));        // зелёный
-    renderer.setPredictionColor(cv::Scalar(0, 255, 0));  // зелёный (можно жёлтый)
+    renderer.setPredictionColor(cv::Scalar(0, 255, 0));  // зелёный
     renderer.setLostColor(cv::Scalar(0, 0, 255));        // красный
 
     try {
@@ -37,7 +38,7 @@ bool FaceTracker::initialize(const cv::Mat& frame) {
         face.center = cv::Point2f(faceRect.x + faceRect.width / 2.0f,
             faceRect.y + faceRect.height / 2.0f);
         face.age = 1;
-        face.currentStatus = TargetStatus::lost;
+        face.currentStatus = TargetStatus::find;
         updatePositionHistory(face, face.center);
         trackedFaces.push_back(face);
     }
@@ -53,37 +54,22 @@ bool FaceTracker::initialize(const cv::Mat& frame) {
 bool FaceTracker::update(const cv::Mat& frame) {
     if (frame.empty()) return false;
 
-    auto currentTime = std::chrono::steady_clock::now();
-    float deltaTime = 0.0f;
+    std::vector<cv::Rect> detectedFaces = detectFaces(frame);
 
-    if (hasPreviousTime) {
-        deltaTime = std::chrono::duration<float>(currentTime - previousTime).count();
-    }
-    hasPreviousTime = true;
-    previousTime = currentTime;
-
-    if (deltaTime < 0.001f) deltaTime = 1.0f / 30.0f;
-
-    static int frameCounter = 0;
-    frameCounter++;
-    bool doDetect = (frameCounter % 5 == 0);
-
-    std::vector<cv::Rect> detectedFaces;
-    if (doDetect) detectedFaces = detectFaces(frame);
-
-    // --- PREDICT ---
+    // Сброс флагов
     for (auto& face : trackedFaces) {
         face.matched = false;
-        face.predicted = face.center + face.velocity * deltaTime;
     }
 
-    // --- MATCH ---
+    // -------- MATCH BY IOU --------
     for (const auto& det : detectedFaces) {
         float bestIOU = 0.0f;
         int bestIdx = -1;
+
         for (int i = 0; i < (int)trackedFaces.size(); i++) {
             auto& face = trackedFaces[i];
             if (face.IsLost()) continue;
+
             float iou = computeIOU(det, face.boundingBox);
             if (iou > bestIOU) {
                 bestIOU = iou;
@@ -91,40 +77,36 @@ bool FaceTracker::update(const cv::Mat& frame) {
             }
         }
 
-        if (bestIdx >= 0 && bestIOU > 0.55f) {
+        // Нашли соответствие
+        if (bestIdx >= 0 && bestIOU > 0.3f) {
             auto& face = trackedFaces[bestIdx];
-            cv::Point2f newCenter(det.x + det.width * 0.5f, det.y + det.height * 0.5f);
-            cv::Point2f lastCenter = face.center;
-            face.center = 0.7f * face.center + 0.3f * newCenter;
-            cv::Point2f displacement = face.center - lastCenter;
-            if (deltaTime > 0) {
-                cv::Point2f newVelocity = displacement / deltaTime;
-                float alpha = 0.3f * std::min(deltaTime * 30.0f, 1.0f);
-                face.velocity = (1.0f - alpha) * face.velocity + alpha * newVelocity;
-            }
+
+            cv::Point2f newCenter(
+                det.x + det.width * 0.5f,
+                det.y + det.height * 0.5f
+            );
+
+            // Плавное сглаживание, БЕЗ скорости
+            face.center = smoothAlpha * newCenter + (1.0f - smoothAlpha) * face.center;
+
             face.boundingBox = det;
             face.lostFrames = 0;
             face.matched = true;
+            face.currentStatus = TargetStatus::find;
+
             updatePositionHistory(face, face.center);
         }
     }
 
-    // --- HANDLE LOST ---
+    // -------- LOST HANDLING --------
     for (auto& face : trackedFaces) {
         if (!face.matched) {
             face.lostFrames++;
-            face.center = face.predicted;
-            face.currentStatus = (face.lostFrames > 10 ? face.currentStatus = TargetStatus::lost : TargetStatus::find);
-            //face.lost = (face.lostFrames > 10);
+            face.currentStatus = TargetStatus::lost;
         }
-        else {
-            face.currentStatus = TargetStatus::find;
-            face.lostFrames = 0;
-        }
-        face.predictedCenter = face.center + face.velocity * predictionTime;
     }
 
-    // --- ADD NEW FACES ---
+    // -------- ADD NEW --------
     for (const auto& det : detectedFaces) {
         bool matched = false;
         for (auto& face : trackedFaces) {
@@ -133,32 +115,29 @@ bool FaceTracker::update(const cv::Mat& frame) {
                 break;
             }
         }
+
         if (!matched) {
             TrackedFace f;
             f.id = nextFaceId++;
             f.boundingBox = det;
-            f.center = { det.x + det.width * 0.5f, det.y + det.height * 0.5f };
+            f.center = {
+                det.x + det.width * 0.5f,
+                det.y + det.height * 0.5f
+            };
             f.velocity = { 0,0 };
             f.predictedCenter = f.center;
             f.lostFrames = 0;
             f.matched = true;
             f.currentStatus = TargetStatus::find;
-            f.age = 1;
-            f.previousTime = currentTime;
-            f.hasPreviousPosition = false;
+
             trackedFaces.push_back(f);
         }
     }
 
-    // --- REMOVE DEAD ---
-    trackedFaces.erase(
-        std::remove_if(trackedFaces.begin(), trackedFaces.end(),
-            [&](const TrackedFace& f) { return f.lostFrames > maxLostFrames; }),
-        trackedFaces.end()
-    );
-
+    removeOldFaces();
     return true;
 }
+
 
 // ---------- Единственное изменение в drawTrackingInfo ----------
 void FaceTracker::drawTrackingInfo(cv::Mat& frame) const {
@@ -175,13 +154,45 @@ std::vector<cv::Rect> FaceTracker::detectFaces(const cv::Mat& frame) {
     cv::Mat gray;
     cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
     cv::equalizeHist(gray, gray);
+
+    // Детекция
     faceCascade.detectMultiScale(gray, faces, scaleFactor, minNeighbors, 0, minSize, maxSize);
+
+    // Фильтр 1: соотношение сторон
+    faces.erase(std::remove_if(faces.begin(), faces.end(),
+        [](const cv::Rect& r) {
+            float aspect = (float)r.width / r.height;
+            return aspect < 0.8f || aspect > 1.4f;
+        }), faces.end());
+
+    // Фильтр 2: NMS
+    faces = nonMaximumSuppression(faces, 0.4f);
+
     return faces;
 }
 
-// --- Остальные методы без изменений, за исключением удалённых графических функций ---
-// updateFaceTracking, updateFacePosition, updateVelocity и т.д. остаются как в оригинале
-// (они не используют графику, поэтому их трогать не нужно)
+std::vector<cv::Rect> FaceTracker::nonMaximumSuppression(const std::vector<cv::Rect>& faces, float iouThreshold) const {
+    std::vector<cv::Rect> result;
+    std::vector<int> indices(faces.size());
+    std::iota(indices.begin(), indices.end(), 0);
+
+    std::sort(indices.begin(), indices.end(),
+        [&faces](int i, int j) { return faces[i].area() > faces[j].area(); });
+
+    while (!indices.empty()) {
+        int best = indices[0];
+        result.push_back(faces[best]);
+
+        std::vector<int> remaining;
+        for (size_t i = 1; i < indices.size(); ++i) {
+            int idx = indices[i];
+            if (computeIOU(faces[best], faces[idx]) < iouThreshold)
+                remaining.push_back(idx);
+        }
+        indices = remaining;
+    }
+    return result;
+}
 
 void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
     for (auto& face : trackedFaces) face.currentStatus = TargetStatus::lost;
@@ -363,12 +374,20 @@ int FaceTracker::findClosestFace(const cv::Point2f& center, const std::vector<Tr
 }
 
 void FaceTracker::removeOldFaces() {
+    auto now = std::chrono::steady_clock::now();
+
     trackedFaces.erase(
         std::remove_if(trackedFaces.begin(), trackedFaces.end(),
-            [](const TrackedFace& face) { return face.IsLost() && face.age > 30; }),
+            [&](const TrackedFace& f) {
+                if (f.currentStatus != TargetStatus::lost) return false;
+
+                float sec = std::chrono::duration<float>(now - f.lostTime).count();
+                return sec > lostLifetimeSec;
+            }),
         trackedFaces.end()
     );
 }
+
 
 float FaceTracker::computeIOU(const cv::Rect& a, const cv::Rect& b) {
     int x1 = std::max(a.x, b.x), y1 = std::max(a.y, b.y);

@@ -41,6 +41,11 @@ struct TrackedFace {
 
     TargetStatus currentStatus = TargetStatus::find;
 
+    // Время жизни после lost
+    std::chrono::steady_clock::time_point lostTime;
+    bool lostTimeSet = false;
+    float lostLifetimeSec = 1.5f;
+
     TrackedFace() : id(0), age(0), currentStatus(TargetStatus::find), hasPreviousPosition(false) {
         boundingBox = cv::Rect(0, 0, 0, 0);
         center = cv::Point2f(0, 0);
@@ -71,7 +76,6 @@ public:
     cv::Point2f getLargestFaceCenter() const;
     TrackedFace getLargestFace() const;
 
-    // Новый метод для доступа к данным (const ссылка)
     const std::vector<TrackedFace>& getTrackedFacesRef() const { return trackedFaces; }
 
 private:
@@ -104,6 +108,9 @@ private:
 
     // Приватные методы
     std::vector<cv::Rect> detectFaces(const cv::Mat& frame);
+
+    std::vector<cv::Rect> nonMaximumSuppression(const std::vector<cv::Rect>& faces, float iouThreshold) const;
+
     cv::Rect getLargestFaceRect(const std::vector<cv::Rect>& faces);
 
     void updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime);
@@ -120,5 +127,5 @@ private:
     float calculateDistance(const cv::Point2f& p1, const cv::Point2f& p2) const;
     int findClosestFace(const cv::Point2f& center, const std::vector<TrackedFace>& faces) const;
     void removeOldFaces();
-    float computeIOU(const cv::Rect& a, const cv::Rect& b);
+    static float computeIOU(const cv::Rect& a, const cv::Rect& b);
 };

@@ -119,7 +119,7 @@ void Renderer::drawTargetSoftLock(cv::Mat& frame, const TrackedFace& face) const
 
 
     // ���������� ��� ������
-    std::string info = "ID: " + std::to_string(face.id) + " Age: " + std::to_string(face.age);
+    std::string info = "ID: " + std::to_string(face.id) + " Age: " + std::to_string(face.age) + " Dis: " + std::to_string(621) + " M";
     cv::putText(frame, info,
         cv::Point(face.boundingBox.x, face.boundingBox.y + face.boundingBox.height + 20),
         cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(200, 200, 200), 1);
