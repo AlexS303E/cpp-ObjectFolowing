@@ -36,21 +36,22 @@ set(SOURCE_FILES
     src/Trackers/FaceTracker.cpp
     src/Trackers/EdgeDetector.cpp
     src/Trackers/TrackerManager.cpp
+    src/Trackers/TargetManager.cpp
 )
 
 set(HEADER_FILES
     src/global.h
     src/WebcamViewer.h
-    src/Targets/ObjInfo.h
-    src/Targets/Target.h
     src/Trackers/ObjectTracker.h
     src/Trackers/FaceTracker.h
     src/Trackers/EdgeDetector.h
     src/Trackers/TrackerManager.h
+    src/Trackers/TargetManager.h
+    src/Trackers/MasterTracker.h
 )
 
 # === Создание исполняемого файла ===
-add_executable(WebcamViewer ${SOURCE_FILES} ${HEADER_FILES} "src/Trackers/Renderer.h" "src/Trackers/Renderer.cpp")
+add_executable(WebcamViewer ${SOURCE_FILES} ${HEADER_FILES} "src/Trackers/Renderer.h" "src/Trackers/Renderer.cpp" "src/Trackers/TargetManager.h" "src/Trackers/TargetManager.cpp")
 
 # === Настройки цели ===
 set_target_properties(WebcamViewer PROPERTIES

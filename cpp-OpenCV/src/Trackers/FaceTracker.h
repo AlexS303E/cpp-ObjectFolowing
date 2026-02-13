@@ -8,70 +8,23 @@
 #include <deque>
 #include "./global.h"
 #include "Renderer.h"
+#include "MasterTracker.h"
 
-enum class TrackerMode {
-    src, // Поиск всех объектов на изображении
-    trc, // Слежение за 1 объектом
-};
 
-enum class TargetStatus {
-    find,
-    lock,
-    softlock,
-    lost,
-};
 
-// Структура TrackedFace остаётся без изменений
-struct TrackedFace {
-    cv::Rect boundingBox;
-    cv::Point2f center;
-    cv::Point2f velocity;
-    cv::Point2f predictedCenter;
-    cv::Point2f predicted = { 0,0 };
-    int id;
-    int age;
-    std::deque<cv::Point2f> positionHistory;
-
-    cv::Point2f previousPosition;
-    std::chrono::steady_clock::time_point previousTime;
-    bool hasPreviousPosition;
-
-    int lostFrames = 0;
-    bool matched = false;
-
-    TargetStatus currentStatus = TargetStatus::find;
-
-    // Время жизни после lost
-    std::chrono::steady_clock::time_point lostTime;
-    bool lostTimeSet = false;
-    float lostLifetimeSec = 1.5f;
-
-    TrackedFace() : id(0), age(0), currentStatus(TargetStatus::find), hasPreviousPosition(false) {
-        boundingBox = cv::Rect(0, 0, 0, 0);
-        center = cv::Point2f(0, 0);
-        velocity = cv::Point2f(0, 0);
-        predictedCenter = cv::Point2f(0, 0);
-        previousPosition = cv::Point2f(0, 0);
-    }
-
-    bool IsLost() const {
-        return currentStatus == TargetStatus::lost;
-    }
-};
-
-class FaceTracker {
+class FaceTracker : public MasterTracker {
 public:
     FaceTracker();
-    ~FaceTracker() = default;
+    ~FaceTracker() override = default;
 
-    bool update(const cv::Mat& frame);
+    bool update(const cv::Mat& frame) override;
     bool initialize(const cv::Mat& frame);
 
     // Метод отрисовки теперь делегирует работу рендереру
     void drawTrackingInfo(cv::Mat& frame) const;
 
     void reset();
-    bool isInitialized() const;
+    bool isInitialized() const override;
     std::vector<TrackedFace> getTrackedFaces() const;
     cv::Point2f getLargestFaceCenter() const;
     TrackedFace getLargestFace() const;
