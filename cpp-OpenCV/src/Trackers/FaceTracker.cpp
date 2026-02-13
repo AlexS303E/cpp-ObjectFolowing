@@ -382,7 +382,7 @@ void FaceTracker::removeOldFaces() {
                 if (f.currentStatus != TargetStatus::lost) return false;
 
                 float sec = std::chrono::duration<float>(now - f.lostTime).count();
-                return sec > lostLifetimeSec;
+                return sec > f.lostLifetimeSec;
             }),
         trackedFaces.end()
     );
