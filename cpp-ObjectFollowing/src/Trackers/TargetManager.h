@@ -3,6 +3,8 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 #include <opencv2/objdetect.hpp>
+#include <chrono>
+#include <algorithm>
 
 enum class TrackerMode {
     src, // Поиск всех объектов на изображении
@@ -16,27 +18,20 @@ enum class TargetStatus {
     lost,
 };
 
-// Структура TrackedFace остаётся без изменений
 struct TrackedFace {
     cv::Rect boundingBox;
     cv::Point2f center;
     cv::Point2f velocity;
     cv::Point2f predictedCenter;
-    cv::Point2f predicted = { 0,0 };
     int id;
     int age;
     std::deque<cv::Point2f> positionHistory;
-
     cv::Point2f previousPosition;
     std::chrono::steady_clock::time_point previousTime;
     bool hasPreviousPosition;
-
     int lostFrames = 0;
-    bool matched = false;
-
+    bool matched = false; // временный флаг для сопоставления
     TargetStatus currentStatus = TargetStatus::find;
-
-    // Время жизни после lost
     std::chrono::steady_clock::time_point lostTime;
     bool lostTimeSet = false;
     float lostLifetimeSec = 1.5f;
@@ -58,29 +53,25 @@ class TargetManager {
 public:
     TargetManager();
 
-    // Обновить внутренний список копией актуальных лиц из трекера
-    void update(const std::vector<TrackedFace>& faces);
+    // Управление списком лиц
+    void addFace(const TrackedFace& face);
+    void updateFace(int id, const TrackedFace& newData);
+    void removeFace(int id);
+    void removeLostFaces(float maxLostTimeSec);
+    void clear();
 
-    // Переключиться на следующее лицо в списке (циклически)
-    void selectNext();
-
-    // Переключиться на предыдущее лицо
-    void selectPrev();
-
-    // Получить ID выбранного лица (-1, если ничего не выбрано)
+    // Доступ к данным
+    const std::vector<TrackedFace>& getFaces() const;
     int getSelectedId() const;
-
-    // Получить указатель на выбранное лицо (nullptr, если нет)
     const TrackedFace* getSelectedFace() const;
 
-    // Получить внутренний список лиц (для отрисовки и т.п.)
-    const std::vector<TrackedFace>& getFaces() const;
+    // Переключение выбранного лица
+    void selectNext();
+    void selectPrev();
 
 private:
-    std::vector<TrackedFace> faces_;   // копия списка лиц
-    int selectedId_;                    // ID выбранного лица (-1 = нет)
+    std::vector<TrackedFace> faces_;
+    int selectedId_;
 
-    // Вспомогательный метод: устанавливает выбранное лицо по ID,
-    // снимает выделение с предыдущего и меняет статусы
     void setSelectedFace(int id);
 };

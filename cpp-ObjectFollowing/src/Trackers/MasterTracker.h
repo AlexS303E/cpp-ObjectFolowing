@@ -23,13 +23,13 @@ public:
         targetManager_.selectPrev();
     }
     //virtual void ChangeMode() = 0;
-
+    virtual void reset() = 0;
+    virtual void drawTrackingInfo(cv::Mat& frame) const = 0;
 
 protected:
-
+    TargetManager targetManager_;
 
 private:
-    TargetManager targetManager_;
 
     std::string name_;
 };

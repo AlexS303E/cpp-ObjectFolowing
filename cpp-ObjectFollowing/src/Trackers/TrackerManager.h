@@ -33,6 +33,10 @@ public:
     // Проверка инициализации
     bool isInitialized() const;
 
+    // Переключение выбранной цели
+    void selectNextTrg();
+    void selectPrevTrg();
+
     // Получение текущего трекера
     ObjectTracker* getObjectTracker();
     FaceTracker* getFaceTracker();

@@ -130,6 +130,7 @@ void processFrame(cv::Mat& frame,
 }
 
 // Функция для обработки клавиш
+// Функция для обработки клавиш
 void processKey(int key,
     bool& useCombinedDetector,
     bool& showOnlyEdges,
@@ -141,6 +142,10 @@ void processKey(int key,
     double& combinedThresh1, double& combinedThresh2,
     int& dilateSize, int& erodeSize,
     WebcamViewer& webcam) {
+
+
+    std::cout << "Key pressed: " << key << std::endl;
+    
 
     // Переключение детекторов
     if (key == '1') {
@@ -301,6 +306,20 @@ void processKey(int key,
         std::string filename = "frame_" + std::to_string(time(nullptr)) + ".jpg";
         webcam.saveCurrentFrame(filename);
     }
+
+    // Обработка стрелок (коды могут отличаться на разных платформах)
+    if (key == 81 || key == '8') { // Влево и 8
+        trackerManager.selectPrevTrg();
+    }
+    else if (key == 82) { // Вверх
+        std::cout << "Up arrow pressed" << std::endl;
+    }
+    else if (key == 83 || key == '9') { // Вправо и 9
+        trackerManager.selectNextTrg();
+    }
+    else if (key == 84) { // Вниз
+        std::cout << "Down arrow pressed" << std::endl;
+    }
 }
 
 int main() {
@@ -373,6 +392,7 @@ int main() {
             processFrame(frame, cannyDetector, combinedDetector, trackerManager,
                 useCombinedDetector, showOnlyEdges, trackingEnabled, currentFPS);
             };
+
 
         // === Функция обработки клавиш ===
         auto keyProcessor = [&](int key) {

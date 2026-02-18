@@ -85,6 +85,32 @@ bool TrackerManager::isInitialized() const {
     }
 }
 
+void TrackerManager::selectNextTrg(){
+    switch (m_currentType) {
+    case TrackerType::OBJECT_TRACKER:
+        //m_objectTracker
+        break;
+
+    case TrackerType::FACE_TRACKER:
+        std::cout << "Select next target\n";
+        m_faceTracker->selectNextTrg();
+        break;
+    }
+}
+
+void TrackerManager::selectPrevTrg() {
+    switch (m_currentType) {
+    case TrackerType::OBJECT_TRACKER:
+        //m_objectTracker
+        break;
+
+    case TrackerType::FACE_TRACKER:
+        std::cout << "Select prev target\n";
+        m_faceTracker->selectPrevTrg();
+        break;
+    }
+}
+
 ObjectTracker* TrackerManager::getObjectTracker() {
     return m_objectTracker.get();
 }
