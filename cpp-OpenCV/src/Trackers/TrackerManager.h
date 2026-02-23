@@ -34,8 +34,12 @@ public:
     bool isInitialized() const;
 
     // Переключение выбранной цели
-    void selectNextTrg();
     void selectPrevTrg();
+    void selectNextTrg();
+
+    // Переключение режим трекера
+    void selectPrevTrkMode();
+    void selectNextTrkMode();
 
     // Получение текущего трекера
     ObjectTracker* getObjectTracker();

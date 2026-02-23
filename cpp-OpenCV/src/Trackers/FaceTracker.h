@@ -16,6 +16,10 @@ public:
     ~FaceTracker() override = default;
 
     bool update(const cv::Mat& frame) override;
+
+    bool updateSrc(const cv::Mat& frame);
+    bool updateTrc(const cv::Mat& frame);
+
     void updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime);
     bool initialize(const cv::Mat& frame);
 

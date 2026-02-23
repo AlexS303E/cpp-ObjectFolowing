@@ -185,7 +185,7 @@ void processKey(int key,
     if (key == 'm' || key == 'M') {
         if (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER) {
             trackerManager.switchTracker(TrackerManager::TrackerType::FACE_TRACKER);
-            std::cout << "Switched to Face Tracker" << std::endl;
+            //std::cout << "Switched to Face Tracker" << std::endl;
         }
         else {
             trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
@@ -308,17 +308,18 @@ void processKey(int key,
     }
 
     // Обработка стрелок (коды могут отличаться на разных платформах)
-    if (key == 81 || key == '8') { // Влево и 8
+
+    if (key == '6') {
+        trackerManager.selectPrevTrkMode();
+    }
+    else if (key == '7') {
+        trackerManager.selectNextTrkMode();
+    }
+    else if (key == '8') {
         trackerManager.selectPrevTrg();
     }
-    else if (key == 82) { // Вверх
-        std::cout << "Up arrow pressed" << std::endl;
-    }
-    else if (key == 83 || key == '9') { // Вправо и 9
+    else if (key == '9') {
         trackerManager.selectNextTrg();
-    }
-    else if (key == 84) { // Вниз
-        std::cout << "Down arrow pressed" << std::endl;
     }
 }
 
@@ -332,6 +333,8 @@ int main() {
         std::cout << "=============================================\n";
         std::cout << "Controls:\n";
         std::cout << "  [1/2] - Switch detector (Canny/Combined)\n";
+        std::cout << "  [6/7] - Select tracker mode\n";
+        std::cout << "  [8/9] - Select target\n";
         std::cout << "  [+/-] - Adjust Canny thresholds\n";
         std::cout << "  [c/C] - Toggle display mode (overlay/edges only)\n";
         std::cout << "  [d/D] - Increase/decrease dilation (Combined)\n";

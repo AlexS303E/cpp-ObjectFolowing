@@ -11,10 +11,6 @@ void TargetManager::updateFace(int id, const TrackedFace& newData) {
         [id](const TrackedFace& f) { return f.id == id; });
     if (it != faces_.end()) {
         *it = newData;
-        // Если это выбранное лицо и оно не потеряно, восстанавливаем статус softlock
-        if (id == selectedId_ && it->currentStatus != TargetStatus::lost) {
-            it->currentStatus = TargetStatus::softlock;
-        }
     }
 }
 
@@ -71,6 +67,24 @@ const TrackedFace* TargetManager::getSelectedFace() const {
     return (it != faces_.end()) ? &(*it) : nullptr;
 }
 
+void TargetManager::selectPrev() {
+    if (faces_.empty()) {
+        selectedId_ = -1;
+        return;
+    }
+    int currentIdx = -1;
+    if (selectedId_ != -1) {
+        for (size_t i = 0; i < faces_.size(); ++i) {
+            if (faces_[i].id == selectedId_) {
+                currentIdx = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+    int prevIdx = (currentIdx - 1 + static_cast<int>(faces_.size())) % static_cast<int>(faces_.size());
+    setSelectedFace(faces_[prevIdx].id);
+}
+
 void TargetManager::selectNext() {
     if (faces_.empty()) {
         selectedId_ = -1;
@@ -89,22 +103,15 @@ void TargetManager::selectNext() {
     setSelectedFace(faces_[nextIdx].id);
 }
 
-void TargetManager::selectPrev() {
-    if (faces_.empty()) {
-        selectedId_ = -1;
-        return;
+TrackedFace TargetManager::getFaceByIndex(int i) {
+    return faces_[i];
+}
+
+TrackedFace* TargetManager::getFaceById(int id) {
+    for (auto& face : faces_) {
+        if (face.id == id) return &face;
     }
-    int currentIdx = -1;
-    if (selectedId_ != -1) {
-        for (size_t i = 0; i < faces_.size(); ++i) {
-            if (faces_[i].id == selectedId_) {
-                currentIdx = static_cast<int>(i);
-                break;
-            }
-        }
-    }
-    int prevIdx = (currentIdx - 1 + static_cast<int>(faces_.size())) % static_cast<int>(faces_.size());
-    setSelectedFace(faces_[prevIdx].id);
+    return nullptr;
 }
 
 void TargetManager::setSelectedFace(int id) {

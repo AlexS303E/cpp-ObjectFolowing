@@ -24,12 +24,21 @@ FaceTracker::FaceTracker()
 }
 
 bool FaceTracker::initialize(const cv::Mat& frame) {
-    if (frame.empty()) return false;
+    if (frame.empty()) {
+        std::cerr << "FaceTracker::initialize: frame is empty" << std::endl;
+        return false;
+    }
 
+    // Детектируем лица
     std::vector<cv::Rect> faces = detectFaces(frame);
-    if (faces.empty()) return false;
+    if (faces.empty()) {
+        std::cout << "FaceTracker::initialize: no faces detected" << std::endl;
+        return false;
+    }
 
     auto currentTime = std::chrono::steady_clock::now();
+
+    // Добавляем все обнаруженные лица
     for (const auto& faceRect : faces) {
         TrackedFace face;
         face.id = nextFaceId++;
@@ -38,15 +47,35 @@ bool FaceTracker::initialize(const cv::Mat& frame) {
             faceRect.y + faceRect.height / 2.0f);
         face.age = 1;
         face.currentStatus = TargetStatus::find;
-        updatePositionHistory(face, face.center);
+        face.positionHistory.push_back(face.center);
+        face.previousPosition = face.center;
+        face.velocity = cv::Point2f(0, 0);
+        face.predictedCenter = face.center;
+        face.hasPreviousPosition = false;
+        face.lostFrames = 0;
+        face.lostTimeSet = false;
         targetManager_.addFace(face);
+    }
+
+    // Выбираем первое лицо и устанавливаем ему статус softlock
+    if (!targetManager_.getFaces().empty()) {
+        targetManager_.selectNext();   // выбирает первое, если selectedId_ == -1
+        int selectedId = targetManager_.getSelectedId();
+        if (selectedId != -1) {
+            TrackedFace* facePtr = targetManager_.getFaceById(selectedId);
+            if (facePtr) {
+                facePtr->currentStatus = TargetStatus::softlock;
+                targetManager_.updateFace(selectedId, *facePtr);
+                std::cout << "FaceTracker: selected face ID " << selectedId << " set to softlock" << std::endl;
+            }
+        }
     }
 
     initialized = true;
     previousTime = currentTime;
     hasPreviousTime = true;
 
-    std::cout << "FaceTracker инициализирован с " << targetManager_.getFaces().size() << " лицами" << std::endl;
+    std::cout << "FaceTracker initialized with " << targetManager_.getFaces().size() << " faces" << std::endl;
     return true;
 }
 
@@ -55,7 +84,20 @@ bool FaceTracker::update(const cv::Mat& frame) {
         std::cerr << "FaceTracker not initialized!" << std::endl;
         return false;
     }
+    //updateSrc(frame);
+    switch (trackerMode_) {
+    case TrackerMode::src:
+        updateSrc(frame);
+        break;
 
+    case TrackerMode::trc:
+        updateTrc(frame);
+        break;
+    }
+    
+}
+
+bool FaceTracker::updateSrc(const cv::Mat& frame) {
     // Расчёт deltaTime
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = 0.033f;
@@ -153,6 +195,110 @@ bool FaceTracker::update(const cv::Mat& frame) {
 
     return !targetManager_.getFaces().empty();
 }
+
+bool FaceTracker::updateTrc(const cv::Mat& frame) {
+    if (!initialized || frame.empty()) return false;
+
+    // Расчёт deltaTime
+    auto currentTime = std::chrono::steady_clock::now();
+    float deltaTime = 0.033f;
+    if (hasPreviousTime) {
+        auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(currentTime - previousTime);
+        deltaTime = elapsed.count() / 1000000.0f;
+        deltaTime = std::clamp(deltaTime, 0.001f, 0.1f);
+    }
+    hasPreviousTime = true;
+    previousTime = currentTime;
+
+    // Получаем текущий список лиц и выбранный ID
+    const auto& allFaces = targetManager_.getFaces();   // объявляем один раз
+    int selectedId = targetManager_.getSelectedId();
+
+    // Если ничего не выбрано – выбираем первое лицо и ставим статус lock
+    if (selectedId == -1) {
+        if (!allFaces.empty()) {
+            targetManager_.selectNext();
+            selectedId = targetManager_.getSelectedId();
+            TrackedFace* facePtr = targetManager_.getFaceById(selectedId);
+            if (facePtr) {
+                facePtr->currentStatus = TargetStatus::lock;
+                targetManager_.updateFace(selectedId, *facePtr);
+            }
+        }
+        else {
+            return false; // нет лиц для слежения
+        }
+    }
+
+    // Находим выбранное лицо по ID (используем allFaces, чтобы не делать лишний запрос)
+    auto it = std::find_if(allFaces.begin(), allFaces.end(),
+        [selectedId](const TrackedFace& f) { return f.id == selectedId; });
+    if (it == allFaces.end()) return false; // лицо не найдено (возможно удалено)
+
+    TrackedFace face = *it; // копия для обновления
+
+    // Детекция лиц на всём кадре
+    std::vector<cv::Rect> detectedRects = detectFaces(frame);
+    detectedRects = nonMaximumSuppression(detectedRects, 0.3f);
+
+    // Поиск лучшего соответствия среди детекций, близких к предсказанной позиции
+    cv::Point2f predictedCenter = getPredictedPosition(face);
+    const float MAX_DIST = 150.0f;
+
+    std::vector<int> candidates;
+    for (size_t i = 0; i < detectedRects.size(); ++i) {
+        cv::Point2f detCenter(detectedRects[i].x + detectedRects[i].width / 2.0f,
+            detectedRects[i].y + detectedRects[i].height / 2.0f);
+        float dist = calculateDistance(predictedCenter, detCenter);
+        if (dist < MAX_DIST) {
+            candidates.push_back(static_cast<int>(i));
+        }
+    }
+
+    int bestIdx = -1;
+    float bestIOU = 0.3f;
+    for (int idx : candidates) {
+        float iou = computeIOU(face.boundingBox, detectedRects[idx]);
+        if (iou > bestIOU) {
+            bestIOU = iou;
+            bestIdx = idx;
+        }
+    }
+
+    if (bestIdx != -1) {
+        // Лицо найдено – обновляем позицию
+        updateFacePosition(face, detectedRects[bestIdx], deltaTime);
+        face.lostFrames = 0;
+        face.currentStatus = TargetStatus::lock;
+    }
+    else {
+        // Лицо не найдено
+        face.lostFrames++;
+        if (face.lostFrames > maxLostFrames) {
+            face.currentStatus = TargetStatus::lost;
+            if (!face.lostTimeSet) {
+                face.lostTime = currentTime;
+                face.lostTimeSet = true;
+            }
+        }
+        else {
+            face.predictedCenter = getPredictedPosition(face);
+            if (face.currentStatus != TargetStatus::lost) {
+                face.currentStatus = TargetStatus::lock; // сохраняем lock при временной потере
+            }
+        }
+    }
+
+    // Гарантируем, что если не потеряно, то статус lock
+    if (face.currentStatus != TargetStatus::lost) {
+        face.currentStatus = TargetStatus::lock;
+    }
+
+    // Сохраняем обновлённое лицо
+    targetManager_.updateFace(selectedId, face);
+    return true;
+}
+
 
 void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
     // Получаем текущий список лиц из TargetManager (копия, чтобы безопасно модифицировать)
@@ -256,19 +402,41 @@ void FaceTracker::syncSelectedStatus() {
 }
 
 void FaceTracker::selectNextTrg() {
-    std::cout << "FaceTracker::selectNextTrg called" << std::endl;
-    targetManager_.selectNext();
-    syncSelectedStatus();
+    if (trackerMode_ == TrackerMode::trc) {
+        return;
+    }
+    MasterTracker::selectNextTrg();   // базовый вызов (переключает ID в targetManager_)
+    syncSelectedStatus();              // устанавливает softlock для новой цели
 }
 
 void FaceTracker::selectPrevTrg() {
-    std::cout << "FaceTracker::selectPrevTrg called" << std::endl;
-    targetManager_.selectPrev();
+    if (trackerMode_ == TrackerMode::trc) {
+        return;
+    }
+    MasterTracker::selectPrevTrg();
     syncSelectedStatus();
 }
 
 void FaceTracker::drawTrackingInfo(cv::Mat& frame) const {
-    renderer.draw(frame, targetManager_.getFaces(), initialized);
+    if (!initialized) return;
+
+    if (trackerMode_ == TrackerMode::src) {
+        // Режим SRC: рисуем все лица
+        renderer.draw(frame, targetManager_.getFaces(), initialized);
+    }
+    else { // TrackerMode::trc
+        int selectedId = targetManager_.getSelectedId();
+        if (selectedId == -1) return;
+
+        const auto& faces = targetManager_.getFaces();
+        auto it = std::find_if(faces.begin(), faces.end(),
+            [selectedId](const TrackedFace& f) { return f.id == selectedId; });
+        if (it == faces.end()) return;
+
+        // Передаём вектор только с одним лицом
+        std::vector<TrackedFace> singleFace = { *it };
+        renderer.draw(frame, singleFace, initialized);
+    }
 }
 
 void FaceTracker::reset() {

@@ -5,11 +5,14 @@
 #include <opencv2/objdetect.hpp>
 #include <chrono>
 #include <algorithm>
+#include <type_traits>
 
 enum class TrackerMode {
     src, // Поиск всех объектов на изображении
     trc, // Слежение за 1 объектом
+
 };
+
 
 enum class TargetStatus {
     find,
@@ -17,6 +20,17 @@ enum class TargetStatus {
     softlock,
     lost,
 };
+
+inline std::ostream& operator<<(std::ostream& os, TargetStatus c) {
+    switch (c) {
+    case TargetStatus::find:   os << "find"; break;
+    case TargetStatus::lock: os << "lock"; break;
+    case TargetStatus::softlock:  os << "softlock"; break;
+    case TargetStatus::lost:  os << "lost"; break;
+    default:           os << "Unknown"; break;
+    }
+    return os;
+}
 
 struct TrackedFace {
     cv::Rect boundingBox;
@@ -68,6 +82,9 @@ public:
     // Переключение выбранного лица
     void selectNext();
     void selectPrev();
+
+    TrackedFace getFaceByIndex(int i);
+    TrackedFace* getFaceById(int id);
 
 private:
     std::vector<TrackedFace> faces_;

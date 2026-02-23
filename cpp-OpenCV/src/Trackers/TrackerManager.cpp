@@ -85,6 +85,19 @@ bool TrackerManager::isInitialized() const {
     }
 }
 
+void TrackerManager::selectPrevTrg() {
+    switch (m_currentType) {
+    case TrackerType::OBJECT_TRACKER:
+        //m_objectTracker
+        break;
+
+    case TrackerType::FACE_TRACKER:
+        std::cout << "Select prev target\n";
+        m_faceTracker->selectPrevTrg();
+        break;
+    }
+}
+
 void TrackerManager::selectNextTrg(){
     switch (m_currentType) {
     case TrackerType::OBJECT_TRACKER:
@@ -98,15 +111,28 @@ void TrackerManager::selectNextTrg(){
     }
 }
 
-void TrackerManager::selectPrevTrg() {
+
+
+void TrackerManager::selectPrevTrkMode() {
     switch (m_currentType) {
     case TrackerType::OBJECT_TRACKER:
         //m_objectTracker
         break;
 
     case TrackerType::FACE_TRACKER:
-        std::cout << "Select prev target\n";
-        m_faceTracker->selectPrevTrg();
+        m_faceTracker->selectPrevTrkMode();
+        break;
+    }
+}
+
+void TrackerManager::selectNextTrkMode() {
+    switch (m_currentType) {
+    case TrackerType::OBJECT_TRACKER:
+        //m_objectTracker
+        break;
+
+    case TrackerType::FACE_TRACKER:
+        m_faceTracker->selectNextTrkMode();
         break;
     }
 }
