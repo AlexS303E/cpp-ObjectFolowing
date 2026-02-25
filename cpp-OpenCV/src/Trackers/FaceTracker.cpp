@@ -97,7 +97,16 @@ bool FaceTracker::update(const cv::Mat& frame) {
     
 }
 
+
+
 bool FaceTracker::updateSrc(const cv::Mat& frame) {
+    if (!initialized || frame.empty()) return false;
+
+    // Убеждаемся, что режим SRC
+    if (targetManager_.getMode() != TrackerMode::src) {
+        targetManager_.setMode(TrackerMode::src);
+    }
+
     // Расчёт deltaTime
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = 0.033f;
@@ -109,89 +118,184 @@ bool FaceTracker::updateSrc(const cv::Mat& frame) {
     hasPreviousTime = true;
     previousTime = currentTime;
 
-    // Детекция лиц
-    std::vector<cv::Rect> detectedRects = detectFaces(frame);
-    detectedRects = nonMaximumSuppression(detectedRects, 0.3f);
+    // Получаем текущий список лиц (копия для безопасной модификации)
+    std::vector<TrackedFace> currentFaces = targetManager_.getFaces();
+    std::vector<bool> faceMatched(currentFaces.size(), false);
 
-    // Получаем текущий список лиц из TargetManager
-    const auto& currentFaces = targetManager_.getFaces();
-    int selectedId = targetManager_.getSelectedId();
+    // --- 1. Локальный трекинг для каждого лица (выполняется каждый кадр) ---
+    for (size_t i = 0; i < currentFaces.size(); ++i) {
+        TrackedFace& face = currentFaces[i];
+        if (face.currentStatus == TargetStatus::lost) continue; // потерянных не трекаем локально
 
-    std::vector<bool> used(detectedRects.size(), false);
+        // Определяем центр поиска (предсказанная позиция)
+        cv::Point2f searchCenter = getPredictedPosition(face);
+        int margin = baseSearchMargin; // можно использовать меньший margin, чем в TRC, например 50
+        cv::Rect searchArea(
+            std::max(0, (int)searchCenter.x - margin),
+            std::max(0, (int)searchCenter.y - margin),
+            margin * 2,
+            margin * 2
+        );
+        // Корректировка границ
+        if (searchArea.x + searchArea.width > frame.cols)
+            searchArea.width = frame.cols - searchArea.x;
+        if (searchArea.y + searchArea.height > frame.rows)
+            searchArea.height = frame.rows - searchArea.y;
 
-    // 1. Обновление существующих лиц
-    for (const auto& face : currentFaces) {
-        if (face.currentStatus == TargetStatus::lost) continue;
-
-        float bestIoU = 0.3f;
-        int bestIdx = -1;
-        for (size_t i = 0; i < detectedRects.size(); ++i) {
-            if (used[i]) continue;
-            float iou = computeIOU(face.boundingBox, detectedRects[i]);
-            if (iou > bestIoU) {
-                bestIoU = iou;
-                bestIdx = static_cast<int>(i);
+        std::vector<cv::Rect> detected;
+        if (searchArea.area() > 0) {
+            cv::Mat roi = frame(searchArea);
+            detected = detectFaces(roi);
+            for (auto& r : detected) {
+                r.x += searchArea.x;
+                r.y += searchArea.y;
             }
         }
 
-        TrackedFace updatedFace = face;
-
-        if (bestIdx != -1) {
-            used[bestIdx] = true;
-            updateFacePosition(updatedFace, detectedRects[bestIdx], deltaTime);
-            updatedFace.lostFrames = 0;
-            if (updatedFace.currentStatus == TargetStatus::lost) {
-                updatedFace.currentStatus = TargetStatus::find;
+        if (!detected.empty()) {
+            // Выбираем ближайшее к предсказанной позиции
+            float bestDist = std::numeric_limits<float>::max();
+            cv::Rect bestRect;
+            for (const auto& r : detected) {
+                cv::Point2f c(r.x + r.width / 2.0f, r.y + r.height / 2.0f);
+                float dist = cv::norm(c - searchCenter);
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestRect = r;
+                }
+            }
+            if (bestRect.area() > 0) {
+                // Обновляем лицо
+                face.lostFrames = 0;
+                face.currentStatus = TargetStatus::find; // временно, потом синхронизируем
+                // Экспоненциальное сглаживание
+                const float alpha = smoothAlpha;
+                face.boundingBox.x = (1.0f - alpha) * face.boundingBox.x + alpha * bestRect.x;
+                face.boundingBox.y = (1.0f - alpha) * face.boundingBox.y + alpha * bestRect.y;
+                face.boundingBox.width = (1.0f - alpha) * face.boundingBox.width + alpha * bestRect.width;
+                face.boundingBox.height = (1.0f - alpha) * face.boundingBox.height + alpha * bestRect.height;
+                cv::Point2f newCenter(
+                    face.boundingBox.x + face.boundingBox.width / 2.0f,
+                    face.boundingBox.y + face.boundingBox.height / 2.0f
+                );
+                updateFaceVelocity(face, newCenter, deltaTime);
+                face.positionHistory.push_back(newCenter);
+                if (face.positionHistory.size() > maxHistorySize)
+                    face.positionHistory.pop_front();
+                face.center = newCenter;
+                face.age++;
+                face.predictedCenter = getPredictedPosition(face);
+                faceMatched[i] = true; // помечаем, что лицо обновлено локально
             }
         }
         else {
-            updatedFace.lostFrames++;
-            if (updatedFace.lostFrames > maxLostFrames) {
-                updatedFace.currentStatus = TargetStatus::lost;
-                updatedFace.lostTime = currentTime;
-                updatedFace.lostTimeSet = true;
+            face.lostFrames++;
+            if (face.lostFrames > maxLostFrames) {
+                face.currentStatus = TargetStatus::lost;
+                if (!face.lostTimeSet) {
+                    face.lostTime = currentTime;
+                    face.lostTimeSet = true;
+                }
             }
             else {
-                // Прогнозируем позицию по скорости
-                updatedFace.predictedCenter = getPredictedPosition(updatedFace);
+                face.predictedCenter = getPredictedPosition(face);
+            }
+        }
+    }
+
+    // --- 2. Периодическая глобальная детекция ---
+    framesSinceLastGlobal++;
+    bool doGlobal = (framesSinceLastGlobal >= globalDetectionPeriod);
+
+    if (doGlobal) {
+        framesSinceLastGlobal = 0;
+
+        // Детекция на всём кадре
+        std::vector<cv::Rect> globalDetections = detectFaces(frame);
+        globalDetections = nonMaximumSuppression(globalDetections, 0.3f);
+        std::vector<bool> used(globalDetections.size(), false);
+
+        // Сопоставление с существующими лицами (по IOU или расстоянию)
+        for (size_t i = 0; i < currentFaces.size(); ++i) {
+            TrackedFace& face = currentFaces[i];
+            if (face.currentStatus == TargetStatus::lost) continue; // потерянных не обновляем глобально
+
+            float bestIOU = 0.3f;
+            int bestIdx = -1;
+            for (size_t j = 0; j < globalDetections.size(); ++j) {
+                if (used[j]) continue;
+                float iou = computeIOU(face.boundingBox, globalDetections[j]);
+                if (iou > bestIOU) {
+                    bestIOU = iou;
+                    bestIdx = static_cast<int>(j);
+                }
+            }
+            if (bestIdx != -1) {
+                used[bestIdx] = true;
+                // Обновляем позицию (можно применить сглаживание или просто заменить)
+                const float alpha = smoothAlpha;
+                face.boundingBox.x = (1.0f - alpha) * face.boundingBox.x + alpha * globalDetections[bestIdx].x;
+                face.boundingBox.y = (1.0f - alpha) * face.boundingBox.y + alpha * globalDetections[bestIdx].y;
+                face.boundingBox.width = (1.0f - alpha) * face.boundingBox.width + alpha * globalDetections[bestIdx].width;
+                face.boundingBox.height = (1.0f - alpha) * face.boundingBox.height + alpha * globalDetections[bestIdx].height;
+                cv::Point2f newCenter(
+                    face.boundingBox.x + face.boundingBox.width / 2.0f,
+                    face.boundingBox.y + face.boundingBox.height / 2.0f
+                );
+                // Обновляем скорость и историю (если не делали это в локальном трекинге)
+                if (!faceMatched[i]) {
+                    updateFaceVelocity(face, newCenter, deltaTime);
+                    face.positionHistory.push_back(newCenter);
+                    if (face.positionHistory.size() > maxHistorySize)
+                        face.positionHistory.pop_front();
+                    face.center = newCenter;
+                    face.predictedCenter = getPredictedPosition(face);
+                }
+                face.lostFrames = 0;
+                face.currentStatus = TargetStatus::find;
+                face.age++;
             }
         }
 
-        // Если это выбранное лицо и оно не потеряно, восстанавливаем статус softlock
-        if (face.id == selectedId && updatedFace.currentStatus != TargetStatus::lost) {
-            updatedFace.currentStatus = TargetStatus::softlock;
-        }
-
-        targetManager_.updateFace(face.id, updatedFace);
-    }
-
-    // 2. Добавление новых лиц
-    for (size_t i = 0; i < detectedRects.size(); ++i) {
-        if (!used[i]) {
-            TrackedFace newFace;
-            newFace.id = nextFaceId++;
-            newFace.boundingBox = detectedRects[i];
-            newFace.center = cv::Point2f(
-                detectedRects[i].x + detectedRects[i].width / 2.0f,
-                detectedRects[i].y + detectedRects[i].height / 2.0f
-            );
-            newFace.previousPosition = newFace.center;
-            newFace.velocity = cv::Point2f(0, 0);
-            newFace.predictedCenter = newFace.center;
-            newFace.age = 0;
-            newFace.lostFrames = 0;
-            newFace.currentStatus = TargetStatus::find;
-            newFace.hasPreviousPosition = false;
-            newFace.positionHistory.push_back(newFace.center);
-            targetManager_.addFace(newFace);
+        // Добавление новых лиц
+        for (size_t j = 0; j < globalDetections.size(); ++j) {
+            if (!used[j]) {
+                TrackedFace newFace;
+                newFace.id = nextFaceId++;
+                newFace.boundingBox = globalDetections[j];
+                newFace.center = cv::Point2f(
+                    globalDetections[j].x + globalDetections[j].width / 2.0f,
+                    globalDetections[j].y + globalDetections[j].height / 2.0f
+                );
+                newFace.previousPosition = newFace.center;
+                newFace.velocity = cv::Point2f(0, 0);
+                newFace.predictedCenter = newFace.center;
+                newFace.age = 1;
+                newFace.lostFrames = 0;
+                newFace.currentStatus = TargetStatus::find;
+                newFace.hasPreviousPosition = false;
+                newFace.positionHistory.push_back(newFace.center);
+                currentFaces.push_back(newFace);
+            }
         }
     }
 
-    // 3. Удаление старых потерянных лиц
+    // --- 3. Очистка старых потерянных лиц ---
+    // Используем существующий метод removeLostFrames, но он работает с вектором внутри TargetManager.
+    // Проще обновить TargetManager целиком.
+    targetManager_.setFaces(currentFaces);
     targetManager_.removeLostFaces(1.5f);
-
-    // 4. Синхронизация статуса выбранного лица
     syncSelectedStatus();
+
+    if (targetManager_.getMode() == TrackerMode::src) {
+        const TrackedFace* selected = targetManager_.getSelectedFace();
+        if (selected && selected->currentStatus == TargetStatus::lost) {
+            // Текущее выбранное лицо потеряно - переключаем на следующее
+            targetManager_.selectNext();
+            // Обновляем статус нового выбранного лица на softlock
+            syncSelectedStatus(); // повторно вызываем, чтобы установить softlock
+        }
+    }
 
     return !targetManager_.getFaces().empty();
 }
@@ -199,6 +303,16 @@ bool FaceTracker::updateSrc(const cv::Mat& frame) {
 bool FaceTracker::updateTrc(const cv::Mat& frame) {
     if (!initialized || frame.empty()) return false;
 
+    // Убеждаемся, что режим TRC
+    if (targetManager_.getMode() != TrackerMode::trc) {
+        targetManager_.setMode(TrackerMode::trc, targetManager_.getSelectedId());
+        firstTrcFrame = true;   // взводим флаг при смене режима
+    }
+
+    if (!targetManager_.hasTrackedFace()) return false;
+
+    TrackedFace& face = targetManager_.getTrackedFace();
+
     // Расчёт deltaTime
     auto currentTime = std::chrono::steady_clock::now();
     float deltaTime = 0.033f;
@@ -210,66 +324,101 @@ bool FaceTracker::updateTrc(const cv::Mat& frame) {
     hasPreviousTime = true;
     previousTime = currentTime;
 
-    // Получаем текущий список лиц и выбранный ID
-    const auto& allFaces = targetManager_.getFaces();   // объявляем один раз
-    int selectedId = targetManager_.getSelectedId();
+    // Определяем область поиска
+    std::vector<cv::Rect> detected;
+    cv::Rect searchArea;
 
-    // Если ничего не выбрано – выбираем первое лицо и ставим статус lock
-    if (selectedId == -1) {
-        if (!allFaces.empty()) {
-            targetManager_.selectNext();
-            selectedId = targetManager_.getSelectedId();
-            TrackedFace* facePtr = targetManager_.getFaceById(selectedId);
-            if (facePtr) {
-                facePtr->currentStatus = TargetStatus::lock;
-                targetManager_.updateFace(selectedId, *facePtr);
+    if (firstTrcFrame) {
+        // Первый кадр (или пока лицо не захвачено) – глобальный поиск по всему кадру
+        detected = detectFaces(frame);
+    }
+    else {
+        // Обычный локальный поиск с адаптивным размером
+        cv::Point2f searchCenter = (face.currentStatus == TargetStatus::lost)
+            ? face.center
+            : getPredictedPosition(face);
+
+        float speed = cv::norm(face.velocity);
+        int margin = baseSearchMargin + static_cast<int>(speed * velocityScale);
+        if (face.lostFrames > 0) {
+            margin = static_cast<int>(margin * 1.5f); // расширение при потере
+        }
+        margin = std::min(margin, maxSearchMargin);
+
+        searchArea = cv::Rect(
+            std::max(0, (int)searchCenter.x - margin),
+            std::max(0, (int)searchCenter.y - margin),
+            margin * 2,
+            margin * 2
+        );
+        // Корректировка границ
+        if (searchArea.x + searchArea.width > frame.cols)
+            searchArea.width = frame.cols - searchArea.x;
+        if (searchArea.y + searchArea.height > frame.rows)
+            searchArea.height = frame.rows - searchArea.y;
+
+        if (searchArea.area() > 0) {
+            cv::Mat roi = frame(searchArea);
+            detected = detectFaces(roi);
+            for (auto& r : detected) {
+                r.x += searchArea.x;
+                r.y += searchArea.y;
             }
         }
+    }
+
+    // Выбор наилучшего совпадения
+    cv::Rect bestRect;
+    if (!detected.empty()) {
+        cv::Point2f targetCenter;
+        if (firstTrcFrame) {
+            // При глобальном поиске ищем ближайшее к последнему известному центру
+            targetCenter = face.center;
+        }
         else {
-            return false; // нет лиц для слежения
+            targetCenter = getPredictedPosition(face);
+        }
+
+        float minDist = std::numeric_limits<float>::max();
+        for (const auto& r : detected) {
+            cv::Point2f c(r.x + r.width / 2.0f, r.y + r.height / 2.0f);
+            float dist = cv::norm(c - targetCenter);
+            if (dist < minDist) {
+                minDist = dist;
+                bestRect = r;
+            }
         }
     }
 
-    // Находим выбранное лицо по ID (используем allFaces, чтобы не делать лишний запрос)
-    auto it = std::find_if(allFaces.begin(), allFaces.end(),
-        [selectedId](const TrackedFace& f) { return f.id == selectedId; });
-    if (it == allFaces.end()) return false; // лицо не найдено (возможно удалено)
-
-    TrackedFace face = *it; // копия для обновления
-
-    // Детекция лиц на всём кадре
-    std::vector<cv::Rect> detectedRects = detectFaces(frame);
-    detectedRects = nonMaximumSuppression(detectedRects, 0.3f);
-
-    // Поиск лучшего соответствия среди детекций, близких к предсказанной позиции
-    cv::Point2f predictedCenter = getPredictedPosition(face);
-    const float MAX_DIST = 150.0f;
-
-    std::vector<int> candidates;
-    for (size_t i = 0; i < detectedRects.size(); ++i) {
-        cv::Point2f detCenter(detectedRects[i].x + detectedRects[i].width / 2.0f,
-            detectedRects[i].y + detectedRects[i].height / 2.0f);
-        float dist = calculateDistance(predictedCenter, detCenter);
-        if (dist < MAX_DIST) {
-            candidates.push_back(static_cast<int>(i));
-        }
-    }
-
-    int bestIdx = -1;
-    float bestIOU = 0.3f;
-    for (int idx : candidates) {
-        float iou = computeIOU(face.boundingBox, detectedRects[idx]);
-        if (iou > bestIOU) {
-            bestIOU = iou;
-            bestIdx = idx;
-        }
-    }
-
-    if (bestIdx != -1) {
-        // Лицо найдено – обновляем позицию
-        updateFacePosition(face, detectedRects[bestIdx], deltaTime);
-        face.lostFrames = 0;
+    if (bestRect.area() > 0) {
+        // Лицо найдено
         face.currentStatus = TargetStatus::lock;
+        face.lostFrames = 0;
+
+        // Экспоненциальное сглаживание
+        const float alpha = smoothAlpha;
+        face.boundingBox.x = (1.0f - alpha) * face.boundingBox.x + alpha * bestRect.x;
+        face.boundingBox.y = (1.0f - alpha) * face.boundingBox.y + alpha * bestRect.y;
+        face.boundingBox.width = (1.0f - alpha) * face.boundingBox.width + alpha * bestRect.width;
+        face.boundingBox.height = (1.0f - alpha) * face.boundingBox.height + alpha * bestRect.height;
+
+        cv::Point2f newCenter(
+            face.boundingBox.x + face.boundingBox.width / 2.0f,
+            face.boundingBox.y + face.boundingBox.height / 2.0f
+        );
+
+        updateFaceVelocity(face, newCenter, deltaTime);
+        face.positionHistory.push_back(newCenter);
+        if (face.positionHistory.size() > maxHistorySize)
+            face.positionHistory.pop_front();
+        face.center = newCenter;
+        face.age++;
+        face.predictedCenter = getPredictedPosition(face);
+
+        // Если это был первый кадр (глобальный поиск), переходим в обычный режим
+        if (firstTrcFrame) {
+            firstTrcFrame = false;
+        }
     }
     else {
         // Лицо не найдено
@@ -283,22 +432,15 @@ bool FaceTracker::updateTrc(const cv::Mat& frame) {
         }
         else {
             face.predictedCenter = getPredictedPosition(face);
-            if (face.currentStatus != TargetStatus::lost) {
-                face.currentStatus = TargetStatus::lock; // сохраняем lock при временной потере
-            }
         }
+
+        // Если это первый кадр и лицо не найдено, НЕ сбрасываем флаг
+        // (остаёмся в режиме глобального поиска для следующего кадра)
     }
 
-    // Гарантируем, что если не потеряно, то статус lock
-    if (face.currentStatus != TargetStatus::lost) {
-        face.currentStatus = TargetStatus::lock;
-    }
-
-    // Сохраняем обновлённое лицо
-    targetManager_.updateFace(selectedId, face);
-    return true;
+    targetManager_.updateTrackedFace(face);
+    return face.currentStatus != TargetStatus::lost;
 }
-
 
 void FaceTracker::updateFaceTracking(const std::vector<cv::Rect>& detectedFaces, float deltaTime) {
     // Получаем текущий список лиц из TargetManager (копия, чтобы безопасно модифицировать)
@@ -402,17 +544,13 @@ void FaceTracker::syncSelectedStatus() {
 }
 
 void FaceTracker::selectNextTrg() {
-    if (trackerMode_ == TrackerMode::trc) {
-        return;
-    }
-    MasterTracker::selectNextTrg();   // базовый вызов (переключает ID в targetManager_)
-    syncSelectedStatus();              // устанавливает softlock для новой цели
+    if (trackerMode_ == TrackerMode::trc) return;
+    MasterTracker::selectNextTrg(); // меняет selectedId_ в SRC
+    syncSelectedStatus();
 }
 
 void FaceTracker::selectPrevTrg() {
-    if (trackerMode_ == TrackerMode::trc) {
-        return;
-    }
+    if (trackerMode_ == TrackerMode::trc) return;
     MasterTracker::selectPrevTrg();
     syncSelectedStatus();
 }

@@ -67,7 +67,7 @@ class TargetManager {
 public:
     TargetManager();
 
-    // Управление списком лиц
+    // Управление списком лиц (для SRC)
     void addFace(const TrackedFace& face);
     void updateFace(int id, const TrackedFace& newData);
     void removeFace(int id);
@@ -75,20 +75,34 @@ public:
     void clear();
 
     // Доступ к данным
-    const std::vector<TrackedFace>& getFaces() const;
-    int getSelectedId() const;
-    const TrackedFace* getSelectedFace() const;
+    const std::vector<TrackedFace>& getFaces() const;   // для SRC возвращает faces_, для TRC - вектор с trackedFace_
+    int getSelectedId() const;                           // для SRC возвращает selectedId_, для TRC - id trackedFace_
+    const TrackedFace* getSelectedFace() const;          // аналогично
 
-    // Переключение выбранного лица
+    // Переключение выбранного лица (только для SRC)
     void selectNext();
     void selectPrev();
 
     TrackedFace getFaceByIndex(int i);
     TrackedFace* getFaceById(int id);
 
+    // === Новые методы для поддержки TRC ===
+    void setMode(TrackerMode newMode, int targetId = -1);                   // переключение режима
+    TrackerMode getMode() const { return mode_; }
+
+    // Работа с единственной целью (для TRC)
+    void setTrackedFace(const TrackedFace& face);         // установить/заменить trackedFace_
+    const TrackedFace& getTrackedFace() const { return trackedFace_; }
+    TrackedFace& getTrackedFace() { return trackedFace_; }
+    void updateTrackedFace(const TrackedFace& newData);   // обновить trackedFace_ (если id совпадает)
+    bool hasTrackedFace() const;                           // проверка, инициализировано ли trackedFace_
+    void setFaces(const std::vector<TrackedFace>& newFaces);
+
 private:
     std::vector<TrackedFace> faces_;
     int selectedId_;
+    TrackerMode mode_;          // текущий режим (src или trc)
+    TrackedFace trackedFace_;   // единственная цель для режима trc
 
     void setSelectedFace(int id);
 };

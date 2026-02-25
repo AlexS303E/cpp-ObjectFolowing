@@ -183,13 +183,16 @@ void processKey(int key,
 
     // Переключение трекера (между ObjectTracker и FaceTracker)
     if (key == 'm' || key == 'M') {
-        if (trackerManager.getCurrentTrackerType() == TrackerManager::TrackerType::OBJECT_TRACKER) {
+        switch (trackerManager.getCurrentTrackerType()) {
+        case TrackerManager::TrackerType::OBJECT_TRACKER:
             trackerManager.switchTracker(TrackerManager::TrackerType::FACE_TRACKER);
-            //std::cout << "Switched to Face Tracker" << std::endl;
-        }
-        else {
+            break;
+        case TrackerManager::TrackerType::FACE_TRACKER:
             trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
-            std::cout << "Switched to Object Tracker" << std::endl;
+            break;
+        case TrackerManager::TrackerType::LINEMOD_TRACKER:
+            trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
+            break;
         }
 
         // Если трекинг был включен, сбрасываем и переинициализируем
@@ -340,7 +343,7 @@ int main() {
         std::cout << "  [d/D] - Increase/decrease dilation (Combined)\n";
         std::cout << "  [e/E] - Increase/decrease erosion (Combined)\n";
         std::cout << "  [t/T] - Enable/disable tracking\n";
-        std::cout << "  [m/M] - Switch between Object and Face trackers\n";
+        std::cout << "  [m/M] - Switch between trackers\n";
         std::cout << "  [f/F] - Toggle face/object mode (in Object Tracker)\n";
         std::cout << "  [0]   - Reset tracker\n";
         std::cout << "  [r/R] - Reset detector parameters\n";

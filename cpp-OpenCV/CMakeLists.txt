@@ -21,6 +21,11 @@ endif()
 # === Поиск OpenCV ===
 find_package(OpenCV REQUIRED COMPONENTS core highgui videoio imgproc dnn imgcodecs objdetect)
 
+find_package(OpenCV REQUIRED COMPONENTS 
+    core highgui videoio imgproc dnn imgcodecs objdetect surface_matching
+)
+find_package(OpenCV REQUIRED COMPONENTS core highgui videoio imgproc dnn imgcodecs objdetect rgbd)
+
 if(OpenCV_FOUND)
     message(STATUS "OpenCV version: ${OpenCV_VERSION}")
 else()
@@ -37,6 +42,7 @@ set(SOURCE_FILES
     src/Trackers/EdgeDetector.cpp
     src/Trackers/TrackerManager.cpp
     src/Trackers/TargetManager.cpp
+    src/Trackers/LineModTracker.cpp
 )
 
 set(HEADER_FILES
@@ -48,10 +54,11 @@ set(HEADER_FILES
     src/Trackers/TrackerManager.h
     src/Trackers/TargetManager.h
     src/Trackers/MasterTracker.h
+    src/Trackers/LineModTracker.h
 )
 
 # === Создание исполняемого файла ===
-add_executable(WebcamViewer ${SOURCE_FILES} ${HEADER_FILES} "src/Trackers/Renderer.h" "src/Trackers/Renderer.cpp" "src/Trackers/TargetManager.h" "src/Trackers/TargetManager.cpp")
+add_executable(WebcamViewer ${SOURCE_FILES} ${HEADER_FILES} "src/Trackers/Renderer.h" "src/Trackers/Renderer.cpp" "src/Trackers/TargetManager.h" "src/Trackers/TargetManager.cpp" "src/Trackers/LineModTracker.h" "src/Trackers/LineModTracker.cpp")
 
 # === Настройки цели ===
 set_target_properties(WebcamViewer PROPERTIES

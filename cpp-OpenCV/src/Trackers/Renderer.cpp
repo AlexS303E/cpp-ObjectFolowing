@@ -55,7 +55,6 @@ void Renderer::draw(cv::Mat& frame, const std::vector<TrackedFace>& faces, bool 
 }
 
 void Renderer::drawTargetLock(cv::Mat& frame, const TrackedFace& face) const {
-    std::cout << "Lock\n";
     // �������� ���� � ������ �����
     cv::rectangle(frame, face.boundingBox, faceColor, BORDER_THICKNESS);
     cv::rectangle(frame, face.boundingBox, innerFaceColor, INNER_BORDER_THICKNESS);

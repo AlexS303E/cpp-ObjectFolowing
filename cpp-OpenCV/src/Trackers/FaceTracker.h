@@ -50,8 +50,18 @@ private:
     const int maxHistorySize = 10;
     std::chrono::steady_clock::time_point previousTime;
     bool hasPreviousTime;
-    int maxLostFrames = 15;
-    float smoothAlpha = 0.25f;
+
+
+    int baseSearchMargin = 100;      // базовый радиус (пиксели)
+    int maxSearchMargin = 300;       // максимальный радиус (чтобы не уйти в бесконечность)
+    float velocityScale = 0.5f;      // коэффициент перевода скорости в дополнительный радиус (секунды)
+    int maxLostFrames = 15;                 // макс. число кадров потери до перевода в lost
+    float smoothAlpha = 0.3f;              // коэффициент сглаживания рамки
+
+    bool firstTrcFrame;
+
+    int globalDetectionPeriod = 5;      // выполнять глобальную детекцию каждые 5 кадров
+    int framesSinceLastGlobal = 0;      // счётчик кадров с последней глобальной детекции
 
     Renderer renderer;
 
@@ -68,6 +78,7 @@ private:
     float calculateDistance(const cv::Point2f& p1, const cv::Point2f& p2) const;
     int findClosestFace(const cv::Point2f& center, const std::vector<TrackedFace>& faces) const;
     static float computeIOU(const cv::Rect& a, const cv::Rect& b);
+
 
     // Синхронизация статуса выбранного лица
     void syncSelectedStatus();
