@@ -43,6 +43,7 @@ set(SOURCE_FILES
     src/Trackers/TrackerManager.cpp
     src/Trackers/TargetManager.cpp
     src/Trackers/LineModTracker.cpp
+    src/Trackers/ContourTracker.cpp
 )
 
 set(HEADER_FILES
@@ -55,6 +56,7 @@ set(HEADER_FILES
     src/Trackers/TargetManager.h
     src/Trackers/MasterTracker.h
     src/Trackers/LineModTracker.h
+    src/Trackers/ContourTracker.h
 )
 
 # === Создание исполняемого файла ===

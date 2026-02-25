@@ -4,13 +4,15 @@
 #include "ObjectTracker.h"
 #include "FaceTracker.h"
 #include "LineModTracker.h"
+#include "ContourTracker.h"
 
 class TrackerManager {
 public:
     enum class TrackerType {
         OBJECT_TRACKER,
         FACE_TRACKER,
-        LINEMOD_TRACKER
+        LINEMOD_TRACKER,
+        CONTOUR_TRACKER
     };
 
     TrackerManager();
@@ -57,6 +59,7 @@ private:
     std::unique_ptr<ObjectTracker> m_objectTracker_;
     std::unique_ptr<FaceTracker> m_faceTracker_;
     std::unique_ptr<LineModTracker> m_lineModTracker_;
+    std::unique_ptr<ContourTracker> m_contourTracker_;
 
     // Вспомогательная функция для инициализации трекеров
     void initializeTrackers();
@@ -67,6 +70,7 @@ inline std::ostream& operator<<(std::ostream& os, TrackerManager::TrackerType tt
     case TrackerManager::TrackerType::OBJECT_TRACKER:   os << "Combined"; break;
     case TrackerManager::TrackerType::FACE_TRACKER: os << "Face"; break;
     case TrackerManager::TrackerType::LINEMOD_TRACKER:  os << "LineMod"; break;
+    case TrackerManager::TrackerType::CONTOUR_TRACKER:  os << "Contour"; break;
     default:           os << "Unknown"; break;
     }
     return os;

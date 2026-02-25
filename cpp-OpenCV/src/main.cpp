@@ -188,9 +188,12 @@ void processKey(int key,
             trackerManager.switchTracker(TrackerManager::TrackerType::FACE_TRACKER);
             break;
         case TrackerManager::TrackerType::FACE_TRACKER:
-            trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
+            trackerManager.switchTracker(TrackerManager::TrackerType::CONTOUR_TRACKER);
             break;
         case TrackerManager::TrackerType::LINEMOD_TRACKER:
+            trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
+            break;
+        case TrackerManager::TrackerType::CONTOUR_TRACKER:
             trackerManager.switchTracker(TrackerManager::TrackerType::OBJECT_TRACKER);
             break;
         }

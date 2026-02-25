@@ -10,6 +10,7 @@ void TrackerManager::initializeTrackers() {
     m_objectTracker_ = std::make_unique<ObjectTracker>();
     m_faceTracker_ = std::make_unique<FaceTracker>();
     m_lineModTracker_ = std::make_unique<LineModTracker>();
+    m_contourTracker_ = std::make_unique<ContourTracker>();
 }
 
 void TrackerManager::switchTracker(TrackerType type) {
@@ -29,6 +30,9 @@ void TrackerManager::switchTracker(TrackerType type) {
     if (m_lineModTracker_) {
         m_lineModTracker_->reset();
     }
+    if (m_contourTracker_) {
+        m_contourTracker_->reset();
+    }
 
     std::cout << "Switched to " << type << std::endl;
 }
@@ -45,6 +49,8 @@ bool TrackerManager::initialize(const cv::Mat& frame) {
         return m_faceTracker_->initialize(frame);
     case TrackerType::LINEMOD_TRACKER:
         return m_lineModTracker_->initialize(frame);
+    case TrackerType::CONTOUR_TRACKER:
+        return m_contourTracker_->initialize(frame);
     }
     return false;
 }
@@ -57,6 +63,8 @@ bool TrackerManager::update(const cv::Mat& frame) {
         return m_faceTracker_->update(frame);
     case TrackerType::LINEMOD_TRACKER:
         return m_lineModTracker_->update(frame);
+    case TrackerType::CONTOUR_TRACKER:
+        return m_contourTracker_->update(frame);
     }
     return false;
 }
@@ -72,6 +80,9 @@ void TrackerManager::drawTrackingInfo(cv::Mat& frame) const {
     case TrackerType::LINEMOD_TRACKER:
         m_lineModTracker_->drawTrackingInfo(frame);
         break;
+    case TrackerType::CONTOUR_TRACKER:
+        m_contourTracker_->drawTrackingInfo(frame);
+        break;
     }
 }
 
@@ -86,6 +97,9 @@ void TrackerManager::reset() {
     case TrackerType::LINEMOD_TRACKER:
         m_lineModTracker_->reset();
         break;
+    case TrackerType::CONTOUR_TRACKER:
+        m_contourTracker_->reset();
+        break;
     }
 }
 
@@ -97,6 +111,8 @@ bool TrackerManager::isInitialized() const {
         return m_faceTracker_->isInitialized();
     case TrackerType::LINEMOD_TRACKER:
         return m_lineModTracker_->isInitialized();
+    case TrackerType::CONTOUR_TRACKER:
+        return m_contourTracker_->isInitialized();
     }
     return false;
 }
